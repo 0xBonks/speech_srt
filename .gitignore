@@ -1,0 +1,9 @@
+.idea/
+__pycache__/
+output/
+static/temp/
+venv/
+build/
+dist/
+setup_secrets.cmd
+/tmp_play/

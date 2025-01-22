@@ -1,0 +1,51 @@
+<body>
+    <div class="container">
+        <div>
+            {% include "index_header.html" %}
+        </div>
+        {{ page.incl_line_player() | safe }}
+        <form action="/" method="post" onsubmit="updateCursorPos('cursor_position', 'textarea')">
+            <input type="hidden" id="cursor_position" name="cursor_position">
+
+            <div class="section">
+                <h2>Step 1: Select the original language of the text.</h2>
+                {{ page.incl_select_orig_lang() | safe }}
+                <select>
+                    <option>English</option>
+                    <option>Deutsch</option>
+                    <option>Français</option>
+                    <option>Español</option>
+                    <option>Italiano</option>
+                </select>
+            </div>
+
+            <div class="section">
+                <h2>Step 2: Enter the script text here.</h2>
+                {% include "text_tips.html" %}
+                {{ page.incl_text_error() | safe }}
+                {{ page.incl_textarea() | safe }}
+                <input class="button" type="submit" accesskey="p" value="Play current line (Alt-P)" name="play_current_line" id="play_current_line">
+            </div>
+
+            <div class="section">
+                <h2>Step 3: Add additional languages.</h2>
+                {{ page.incl_add_translation() | safe }}
+                {{ page.incl_translate_progress_indicator() | safe }}
+            </div>
+
+            <div class="grid-item" id="step_four">
+                <h2>Step 4: Make voiceover and subtitles</h2>
+                {{ page.incl_select_voices() | safe }}
+                {{ page.incl_refresh_makeit_status() | safe }}
+                <div class="inline-inside-block">
+                    <div class="inlined-item">
+                        {{ page.incl_makeit() | safe }}
+                    </div>
+                    <div class="inlined-item">
+                        {{ page.incl_makeit_progress_indicator() | safe }}
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</body>

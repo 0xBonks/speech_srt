@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include "_init_bootstrap.html" %}
+    {% include "_styles.html" %}
+    {% include "_get_cursor_position.html" %}
+    <title>Voiceover Assistant</title>
+    {{ turbo() }}
+    <link rel="icon" type="image/x-icon" href="/static/ifxFavIcon.ico">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div>
+        {{ page.textarea_content() | safe }}
+    </div>
+</body>
+</html>
