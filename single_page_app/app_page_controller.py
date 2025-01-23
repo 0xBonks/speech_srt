@@ -76,6 +76,9 @@ class AppPageController(HotwirePage):
         self.register(self.incl_makeit_progress_indicator)
         self.register(self.incl_translate_progress_indicator)
 
+    def textarea_content(self):
+        return self.incl_textarea()
+
     def reset(self):
         self.text = ""
         self.text_error = ""
@@ -95,14 +98,15 @@ class AppPageController(HotwirePage):
 
 
     def add_lang(self, new_lang):
+        if not new_lang:
+            self.message = 'Please select a language to add'
+            return
+
         if (new_lang in self.present_langs()) or (new_lang == self.orig_lang):
             self.message = f'Language {new_lang} already present or is the original language'
             return
 
         self.cur_translate_worker = self._worker.run(make_translation, self.text, new_lang, self.orig_lang)
-        # res = make_translation(self.text, new_lang, self.orig_lang)
-
-        return
 
     def add_lang_result(self):
         status = self._worker.get_status(self.cur_translate_worker)
