@@ -7,3 +7,7 @@ build/
 dist/
 setup_secrets.cmd
 env/
+package-lock.json
+package.json
+postcss.config.js
+node_modules
