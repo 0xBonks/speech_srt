@@ -117,7 +117,11 @@ class HotwirePage:
         self._restore_session_context()
 
     def _restore_embedded_context(self):
-        updated_data = json.loads(self._request.form.get("context_frame"))
+        context_frame = self._request.form.get("context_frame")
+        if not context_frame:
+            return
+        
+        updated_data = json.loads(context_frame)
         for key, value in updated_data.items():
             if key in self._context_var_names:
                 setattr(self, key, value)

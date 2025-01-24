@@ -66,11 +66,9 @@ body {
 .step-title {
     font-size: 2rem;
     margin-bottom: 1rem;
-
     font-family: 'Source Sans 3';
     font-style: normal;
-    font-weight: 400;
-
+    font-weight: 700; /* Changed from 400 to 700 for bold */
     color: #1D1D1D;
 }
 
@@ -171,11 +169,65 @@ textarea {
     }
 
     .step-title {
-        font-size: 1rem;
+        font-size: 2rem;
+        margin-bottom: 1rem;
+        font-family: 'Source Sans 3';
+        font-style: normal;
+        font-weight: 700; /* Changed from 400 to 700 for bold */
+        color: #1D1D1D;
     }
 
     .button {
         font-size: 0.9rem;
         padding: 0.6rem 1.2rem;
     }
+}
+
+.main-content_questions {
+    max-width: 100rem; /* Narrower width for better readability */
+    grid-template-columns: 1fr; /* Override the two-column layout */
+    margin: 2rem auto;
+    padding: 0 2rem;
+}
+
+.step_questions {
+    margin-bottom: 3rem; /* Increased spacing between sections */
+    font-size: 2rem;
+    margin-bottom: 1rem;
+
+    font-family: 'Source Sans 3';
+    font-style: normal;
+    font-weight: 400;
+
+    color: #1D1D1D;
+}
+
+.step_questions h2{
+    margin-bottom: 3rem;
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    font-family: 'Source Sans 3';
+    font-style: normal;
+    font-weight: 700; /* Changed from 400 to 700 for bold */
+    color: #1D1D1D;
+}
+
+/* Ensure proper spacing for lists */
+.step_questions ul {
+    margin: 1rem 0 1rem 2rem;
+}
+
+.step_questions p {
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+/* Style links to match the theme */
+.step_questions a {
+    color: #008275;
+    text-decoration: none;
+}
+
+.step_questions a:hover {
+    text-decoration: underline;
 }

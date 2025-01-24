@@ -278,7 +278,8 @@ class AppPageController(HotwirePage):
         return self.get_request_form_value("play_current_line")
 
     def get_cursor_position(self):
-        return int(self.get_request_form_value("cursor_position"))
+        cursor_pos = self.get_request_form_value("cursor_position")
+        return int(cursor_pos) if cursor_pos is not None else 0
 
     def is_action_makeit(self):
         return self.get_request_form_value("makeit")
