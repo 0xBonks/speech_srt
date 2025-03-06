@@ -1,9 +1,0 @@
-{% for lang in present_langs %}
-    <div class="d-flex flex-row form-group">
-    <select class="dropdown_text" name="voice_{{lang}}" id="voice_{{lang}}">
-        {% for voice in voices[lang] %}
-            <option value="{{voice}}">{{voice}}</option>
-        {% endfor %}
-    </select>
-    </div>
-{% endfor %}
