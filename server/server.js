@@ -16,9 +16,11 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+// Serve static files
 app.use(express.static('static'));
 
-// Umgebungsvariablen
+// Environment variables
 const appEnv = {
   tempFileFolder: process.env.TEMP_FILE_FOLDER || 'output',
   tempPlayFolder: process.env.TEMP_PLAY_FOLDER || path.join('static', 'temp'),
@@ -30,7 +32,7 @@ const appEnv = {
   ignoreTranslatorSslCert: process.env.IGNORE_TRANSLATOR_SSL_CERT === 'true'
 };
 
-// Stellen Sie sicher, dass die Ordner existieren
+// Ensure directories exist
 if (!fs.existsSync(appEnv.tempFileFolder)) {
   fs.mkdirSync(appEnv.tempFileFolder, { recursive: true });
 }
@@ -39,42 +41,13 @@ if (!fs.existsSync(appEnv.tempPlayFolder)) {
   fs.mkdirSync(appEnv.tempPlayFolder, { recursive: true });
 }
 
-// Routen
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'API funktioniert!' });
+// Serve the main HTML page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../static/index.html'));
 });
 
-// Beispiel-Daten (in der Praxis würden diese aus einer Datenbank kommen)
-const users = [
-  { id: 1, name: 'Max Mustermann', email: 'max@example.com' },
-  { id: 2, name: 'Erika Musterfrau', email: 'erika@example.com' }
-];
-
-// Erweiterte Routen
-app.get('/api/users', (req, res) => {
-  res.json(users);
-});
-
-app.post('/api/users', (req, res) => {
-  const newUser = {
-    id: users.length + 1,
-    name: req.body.name,
-    email: req.body.email
-  };
-  users.push(newUser);
-  res.status(201).json(newUser);
-});
-
-app.get('/api/users/:id', (req, res) => {
-  const user = users.find(u => u.id === parseInt(req.params.id));
-  if (!user) return res.status(404).json({ message: 'Benutzer nicht gefunden' });
-  res.json(user);
-});
-
-// API-Routen
-// Status-Route
+// API Routes
 app.get('/api/status', (req, res) => {
-  // Verstecke sensible Daten für die Anzeige
   const hideSecrets = { ...appEnv };
   
   if (hideSecrets.pollySecretKey) {
@@ -92,7 +65,6 @@ app.get('/api/status', (req, res) => {
     hideSecrets.pollyKeyId = secretKey.substring(0, 4) + '*'.repeat(secretKey.length - 8) + secretKey.substring(secretKey.length - 4);
   }
   
-  // Füge Pfadinformationen hinzu
   hideSecrets["abspath for temp_file_folder"] = path.resolve(hideSecrets.tempFileFolder);
   hideSecrets["Access to temp_file_folder"] = checkFolderAccess(hideSecrets.tempFileFolder);
   hideSecrets["abspath for temp_play_folder"] = path.resolve(hideSecrets.tempPlayFolder);
@@ -110,31 +82,34 @@ app.post('/api/test-polly', async (req, res) => {
       region: appEnv.pollyRegion
     });
     
-    // Füge eine Sprache hinzu
     mp3SrtSynth.addLang('Joanna', 'EN');
-    
-    // Erstelle einen Testpfad
     const testFilePath = path.join(appEnv.tempFileFolder, 'test.mp3');
     
-    // Versuche, eine Testdatei zu erstellen
+    console.log('Testing AWS Polly with test phrase...');
     await mp3SrtSynth.synthOnePhraseMp3ToFile('<s>Hello World</s>', testFilePath, 'EN');
     
-    // Lösche die Testdatei
     if (fs.existsSync(testFilePath)) {
+      const stats = fs.statSync(testFilePath);
+      console.log(`Test file created with size: ${stats.size} bytes`);
+      
+      if (stats.size < 100) { // Eine echte MP3-Datei sollte größer sein
+        throw new Error('Generated audio file is too small, likely empty or invalid');
+      }
+      
       fs.unlinkSync(testFilePath);
+      res.json({ result: "Connection Successful - Audio generated" });
+    } else {
+      throw new Error('Test file was not created');
     }
-    
-    res.json({ result: "Connection Successful" });
   } catch (e) {
+    console.error('AWS Polly test error:', e);
     res.json({ result: `Exception: ${e.message}` });
   }
 });
 
-// Test Übersetzer
+// Test Translator
 app.post('/api/test-translator', async (req, res) => {
   try {
-    // Kommentieren Sie den echten Test aus
-    /*
     const translator = new Translation(
       appEnv.translatorUrl,
       appEnv.translatorKey,
@@ -142,111 +117,119 @@ app.post('/api/test-translator', async (req, res) => {
     );
     
     const result = await translator.translateText("Hi", "DE", "EN");
-    */
-    
-    // Simulierter erfolgreicher Test
-    const result = "Hallo";
-    
-    res.json({ result: `Success: Hi -> ${result} (Simuliert)` });
+    res.json({ result: `Success: Hi -> ${result}` });
   } catch (e) {
     res.json({ result: `Error: ${e.message}` });
   }
 });
 
-// Download-Route
+// Download route
 app.get('/api/download/:filename', (req, res) => {
   const filename = req.params.filename;
   const downloadName = req.query.name || 'result.zip';
   
-  // Lösche alte Dateien
   utils.deleteOldFiles(appEnv.tempFileFolder, ['.mp3', '.txt', '.zip', '.srt'], 600);
   
   const filePath = path.join(appEnv.tempFileFolder, filename);
   
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Datei nicht gefunden' });
+    return res.status(404).json({ error: 'File not found' });
   }
   
   res.download(filePath, downloadName);
 });
 
-// Abspielen-Route
+// Play route
 app.get('/api/play/:filename', (req, res) => {
   const filename = req.params.filename;
   
-  // Lösche alte Dateien
   utils.deleteOldFiles(appEnv.tempPlayFolder, ['.mp3'], 600);
   
   const filePath = path.join(appEnv.tempPlayFolder, filename);
   
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Datei nicht gefunden' });
+    return res.status(404).json({ error: 'File not found' });
   }
-  
-  res.sendFile(filePath);
+
+  // Set proper headers for audio streaming
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  // Stream the file
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
+
+  // Handle errors
+  fileStream.on('error', (error) => {
+    console.error('Error streaming audio file:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Error streaming audio file' });
+    }
+  });
 });
 
-// Hilfe-Route
-app.get('/api/help', (req, res) => {
-  res.send("<h2>Sorry! This part is not ready yet.<br>" +
-           "Ask for training the author: Vasily Basov <a href='mailto:vasily.basov@infineon.com'>vasily.basov@infineon.com</a></h2>");
-});
-
-// Training-Video-Route
-app.get('/api/training-video', (req, res) => {
-  res.send("<h2>Sorry! This part is not ready yet.<br>" +
-           "Ask for training the author: Vasily Basov <a href='mailto:vasily.basov@infineon.com'>vasily.basov@infineon.com</a></h2>");
-});
-
-// Aktuelle Zeile abspielen
+// Play current line
 app.post('/api/play-line', async (req, res) => {
   try {
     const { text, cursorPosition, voices, origLang } = req.body;
     
     if (!text) {
-      return res.status(400).json({ error: 'Kein Text angegeben' });
+      return res.status(400).json({ error: 'No text provided' });
     }
     
-    // Finde die Zeile an der Cursorposition
     const line = utils.getLineByPos(text, cursorPosition);
+    console.log('Text line to synthesize:', line);
     
     if (!line) {
-      return res.status(400).json({ error: 'Keine Zeile an der Cursorposition gefunden' });
+      return res.status(400).json({ error: 'No line found at cursor position' });
     }
     
-    // Erstelle einen eindeutigen Dateinamen
     const hash = crypto.createHash('sha256').update(line + voices[origLang]).digest('hex');
     const tempFilePath = path.join(appEnv.tempPlayFolder, `${hash}.mp3`);
     
-    // Prüfe, ob die Datei bereits existiert
     if (!fs.existsSync(tempFilePath)) {
+      console.log('Creating new MP3 file with AWS Polly...');
       const mp3SrtSynth = new Mp3SrtSynth({
         accessKeyId: appEnv.pollyKeyId,
         secretAccessKey: appEnv.pollySecretKey,
         region: appEnv.pollyRegion
       });
       
-      // Füge die Sprache hinzu
       mp3SrtSynth.addLang(voices[origLang], origLang);
-      
-      // Erstelle die MP3-Datei
       await mp3SrtSynth.synthOnePhraseMp3ToFile(`<s>${line}</s>`, tempFilePath, origLang);
+      
+      // Check if file was created and has content
+      if (fs.existsSync(tempFilePath)) {
+        const stats = fs.statSync(tempFilePath);
+        console.log('Generated MP3 file size:', stats.size, 'bytes');
+        if (stats.size === 0) {
+          throw new Error('Generated MP3 file is empty');
+        }
+      } else {
+        throw new Error('MP3 file was not created');
+      }
+    } else {
+      console.log('Using existing MP3 file');
+      const stats = fs.statSync(tempFilePath);
+      console.log('Existing MP3 file size:', stats.size, 'bytes');
     }
     
+    // Send the file path instead of base64 data
     res.json({ file_name_mp3: path.basename(tempFilePath) });
   } catch (error) {
-    console.error('Fehler beim Abspielen der Zeile:', error);
+    console.error('Error playing line:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Übersetzung hinzufügen
+// Add translation
 app.post('/api/add-translation', async (req, res) => {
   try {
     const { text, targetLang, origLang } = req.body;
     
     if (!text || !targetLang || !origLang) {
-      return res.status(400).json({ error: 'Fehlende Parameter' });
+      return res.status(400).json({ error: 'Missing parameters' });
     }
     
     const workerId = uuidv4();
@@ -254,11 +237,10 @@ app.post('/api/add-translation', async (req, res) => {
     workers[workerId] = {
       status: 'started',
       progress: 0,
-      stage: 'Initialisiere Übersetzung',
+      stage: 'Initializing translation',
       result: null
     };
     
-    // Starte asynchrone Übersetzung
     (async () => {
       try {
         const translator = new Translation(
@@ -267,42 +249,37 @@ app.post('/api/add-translation', async (req, res) => {
           !appEnv.ignoreTranslatorSslCert
         );
         
-        // Teile den Text in Zeilen auf
         const lines = text.split('\n');
         const translatedLines = [];
         
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].trim();
           
-          // Aktualisiere den Fortschritt
           workers[workerId].progress = (i / lines.length) * 100;
-          workers[workerId].stage = `Übersetze Zeile ${i+1} von ${lines.length}`;
+          workers[workerId].stage = `Translating line ${i+1} of ${lines.length}`;
           
-          // Überspringe leere Zeilen und Zeilen, die mit # beginnen
           if (line === '' || line.startsWith('#')) {
             translatedLines.push(line);
             continue;
           }
           
-          // Übersetze die Zeile
           try {
             const translatedLine = await translator.translateText(line, targetLang, origLang);
             translatedLines.push(`#${targetLang}: ${translatedLine}`);
           } catch (e) {
-            console.error(`Fehler beim Übersetzen der Zeile ${i+1}:`, e);
+            console.error(`Error translating line ${i+1}:`, e);
             translatedLines.push(`#${targetLang}: ERROR: ${e.message}`);
           }
         }
         
-        // Füge die übersetzten Zeilen zum Originaltext hinzu
         const translatedText = text + '\n---\n' + translatedLines.join('\n');
         
         workers[workerId].progress = 100;
-        workers[workerId].stage = 'Übersetzung abgeschlossen';
+        workers[workerId].stage = 'Translation completed';
         workers[workerId].status = 'completed';
         workers[workerId].result = { text: translatedText };
       } catch (error) {
-        console.error('Fehler bei der Übersetzung:', error);
+        console.error('Translation error:', error);
         workers[workerId].status = 'completed';
         workers[workerId].result = { error: error.message };
       }
@@ -310,18 +287,18 @@ app.post('/api/add-translation', async (req, res) => {
     
     res.json({ workerId });
   } catch (error) {
-    console.error('Fehler beim Hinzufügen der Übersetzung:', error);
+    console.error('Error adding translation:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// MP3/SRT-Dateien erstellen
+// Create MP3/SRT files
 app.post('/api/make-files', async (req, res) => {
   try {
     const { text, voices, origLang } = req.body;
     
     if (!text) {
-      return res.status(400).json({ error: 'Kein Text angegeben' });
+      return res.status(400).json({ error: 'No text provided' });
     }
     
     const workerId = uuidv4();
@@ -329,11 +306,10 @@ app.post('/api/make-files', async (req, res) => {
     workers[workerId] = {
       status: 'started',
       progress: 0,
-      stage: 'Initialisiere',
+      stage: 'Initializing',
       result: null
     };
     
-    // Starte asynchrone Verarbeitung
     (async () => {
       try {
         const mp3SrtSynth = new Mp3SrtSynth({
@@ -342,15 +318,12 @@ app.post('/api/make-files', async (req, res) => {
           region: appEnv.pollyRegion
         });
         
-        // Extrahiere die Übersetzungen aus dem Text
         const translations = {};
         const langs = Object.keys(voices);
         
         for (const lang of langs) {
-          // Füge die Sprache zum Synthesizer hinzu
           mp3SrtSynth.addLang(voices[lang], lang);
           
-          // Extrahiere den Text für diese Sprache
           const langPrefix = `#${lang}:`;
           const lines = text.split('\n');
           const langLines = [];
@@ -366,7 +339,6 @@ app.post('/api/make-files', async (req, res) => {
           translations[lang] = langLines.join('\n');
         }
         
-        // Erstelle eindeutige Dateinamen
         const uid = uuidv4();
         const mp3FilePaths = {};
         const srtFilePaths = {};
@@ -376,7 +348,6 @@ app.post('/api/make-files', async (req, res) => {
           srtFilePaths[lang] = path.join(appEnv.tempFileFolder, `${uid}_${lang}.srt`);
         }
         
-        // Erstelle die MP3- und SRT-Dateien
         await mp3SrtSynth.synthesizeAllLangs(
           translations,
           mp3FilePaths,
@@ -387,7 +358,6 @@ app.post('/api/make-files', async (req, res) => {
           }
         );
         
-        // Erstelle eine ZIP-Datei mit allen Dateien
         const zipFileName = `${uid}.zip`;
         const zipFilePath = path.join(appEnv.tempFileFolder, zipFileName);
         
@@ -399,7 +369,6 @@ app.post('/api/make-files', async (req, res) => {
         
         await utils.createZipFile(zipFilePath, filesToZip, zippedFileNames);
         
-        // Lösche die temporären Dateien
         for (const filePath of filesToZip) {
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
@@ -407,11 +376,11 @@ app.post('/api/make-files', async (req, res) => {
         }
         
         workers[workerId].progress = 100;
-        workers[workerId].stage = 'Fertig';
+        workers[workerId].stage = 'Complete';
         workers[workerId].status = 'completed';
         workers[workerId].result = { download_file_name: zipFileName };
       } catch (error) {
-        console.error('Fehler beim Erstellen der Dateien:', error);
+        console.error('Error creating files:', error);
         workers[workerId].status = 'completed';
         workers[workerId].result = { error: error.message };
       }
@@ -419,28 +388,28 @@ app.post('/api/make-files', async (req, res) => {
     
     res.json({ workerId });
   } catch (error) {
-    console.error('Fehler beim Erstellen der Dateien:', error);
+    console.error('Error creating files:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Worker-Status abrufen
+// Get worker status
 app.get('/api/worker/:workerId', (req, res) => {
   const workerId = req.params.workerId;
   
   if (!workers[workerId]) {
-    return res.status(404).json({ error: 'Worker nicht gefunden' });
+    return res.status(404).json({ error: 'Worker not found' });
   }
   
   res.json(workers[workerId]);
 });
 
-// Worker beenden
+// Terminate worker
 app.delete('/api/worker/:workerId', (req, res) => {
   const workerId = req.params.workerId;
   
   if (!workers[workerId]) {
-    return res.status(404).json({ error: 'Worker nicht gefunden' });
+    return res.status(404).json({ error: 'Worker not found' });
   }
   
   workers[workerId].status = 'terminated';
@@ -448,7 +417,7 @@ app.delete('/api/worker/:workerId', (req, res) => {
   res.json({ success: true });
 });
 
-// Hilfsfunktion zum Überprüfen des Ordnerzugriffs
+// Helper function to check folder access
 function checkFolderAccess(folderPath) {
   try {
     if (!fs.existsSync(folderPath)) {
@@ -478,10 +447,9 @@ function checkFolderAccess(folderPath) {
   }
 }
 
-// Server starten
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server läuft auf Port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app; 

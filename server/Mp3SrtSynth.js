@@ -109,8 +109,8 @@ class Mp3SrtSynth {
     });
   }
   
-  addLang(voiceId, shortLangCode, speechStyle = null) {
-    // Prüfen, ob die Stimme neural ist
+  addLang(voiceId, shortLangCode) {
+    // Check if voice is neural
     const neuralVoices = [
       'Danielle', 'Gregory', 'Ivy', 'Joanna', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin',
       'Matthew', 'Ruth', 'Stephen', 'Daniel', 'Vicki', 'Lea', 'Remi', 'Bianca', 'Adriano', 'Zhiyu',
@@ -123,7 +123,6 @@ class Mp3SrtSynth {
     this.synthesizers[shortLangCode] = {
       voiceId,
       engine,
-      speechStyle,
       languageCode: this.longLangCode[shortLangCode]
     };
   }
@@ -200,30 +199,102 @@ class Mp3SrtSynth {
     const ssml = utils.linesToSsml(lines);
     
     try {
-      // MP3 generieren (Dummy-Implementierung für Tests)
-      const dummyAudio = Buffer.from('Dummy MP3 data');
-      fs.writeFileSync(mp3FilePath, dummyAudio);
+      if (!this.synthesizers[shortLangCode]) {
+        throw new Error(`No synthesizer configured for language ${shortLangCode}`);
+      }
       
-      // SRT generieren (Dummy-Implementierung für Tests)
-      const dummySrt = "1\n00:00:00,000 --> 00:00:01,000\nDummy subtitle\n\n";
-      fs.writeFileSync(srtFilePath, '\uFEFF' + dummySrt, 'utf8');
+      const synth = this.synthesizers[shortLangCode];
+      console.log('Synthesizing with config:', {
+        voiceId: synth.voiceId,
+        engine: synth.engine,
+        languageCode: synth.languageCode,
+        ssmlLength: ssml.length
+      });
+      
+      // Get audio stream from AWS Polly
+      const audioStream = await this.awsPolly.synthesizeSpeech(
+        ssml,
+        synth.voiceId,
+        synth.engine,
+        synth.languageCode
+      );
+      
+      // Write the audio stream to file
+      fs.writeFileSync(mp3FilePath, audioStream);
+      
+      // Get speech marks for SRT generation
+      const speechMarks = await this.awsPolly.getSpeechMarks(
+        ssml,
+        synth.voiceId,
+        synth.engine,
+        synth.languageCode
+      );
+      
+      // Generate SRT content
+      const srtContent = utils.speechMarksToSrt(speechMarks);
+      
+      // Write SRT file with UTF-8 BOM
+      fs.writeFileSync(srtFilePath, '\uFEFF' + srtContent, 'utf8');
+      
+      // Verify files were created
+      if (!fs.existsSync(mp3FilePath)) {
+        throw new Error('Failed to create MP3 file');
+      }
+      
+      if (!fs.existsSync(srtFilePath)) {
+        throw new Error('Failed to create SRT file');
+      }
+      
+      const stats = fs.statSync(mp3FilePath);
+      console.log(`Created MP3 file: ${mp3FilePath}, size: ${stats.size} bytes`);
       
       return true;
     } catch (error) {
-      console.error(`Fehler bei der Synthese für ${shortLangCode}:`, error);
+      console.error(`Error in synthesis for ${shortLangCode}:`, error);
       throw error;
     }
   }
   
   async synthOnePhraseMp3ToFile(text, mp3FilePath, shortLangCode) {
     try {
-      // Dummy-Implementierung für Tests
-      const dummyAudio = Buffer.from('Dummy MP3 data for phrase');
-      fs.writeFileSync(mp3FilePath, dummyAudio);
+      if (!this.synthesizers[shortLangCode]) {
+        throw new Error(`No synthesizer configured for language ${shortLangCode}`);
+      }
+      
+      const synth = this.synthesizers[shortLangCode];
+      console.log('Synthesizing single phrase with config:', {
+        text,
+        voiceId: synth.voiceId,
+        engine: synth.engine,
+        languageCode: synth.languageCode
+      });
+      
+      // Get audio stream from AWS Polly
+      const audioStream = await this.awsPolly.synthesizeSpeech(
+        text,
+        synth.voiceId,
+        synth.engine,
+        synth.languageCode
+      );
+      
+      // Write the audio stream to file
+      fs.writeFileSync(mp3FilePath, audioStream);
+      
+      // Verify file was created and has content
+      if (!fs.existsSync(mp3FilePath)) {
+        throw new Error('Failed to create MP3 file');
+      }
+      
+      const stats = fs.statSync(mp3FilePath);
+      console.log(`Created MP3 file: ${mp3FilePath}, size: ${stats.size} bytes`);
+      
+      if (stats.size < 100) {
+        throw new Error('Generated MP3 file is too small to be valid');
+      }
       
       return true;
     } catch (error) {
-      console.error(`Fehler bei der Phrase-Synthese für ${shortLangCode}:`, error);
+      console.error(`Error in single phrase synthesis for ${shortLangCode}:`, error);
       throw error;
     }
   }

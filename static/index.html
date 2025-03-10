@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech SRT API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .button-group {
+            margin: 10px 0;
+        }
+        button {
+            padding: 8px 16px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            margin: 10px 0;
+        }
+        select {
+            margin: 5px 10px 5px 0;
+            padding: 5px;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+        #statusResult {
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Speech SRT API Test</h1>
+
+    <div class="section">
+        <h2>Status</h2>
+        <div class="button-group">
+            <button onclick="checkStatus()">Status prüfen</button>
+            <button onclick="testPolly()">AWS Polly testen</button>
+            <button onclick="testTranslator()">Übersetzer testen</button>
+        </div>
+        <pre id="statusResult"></pre>
+    </div>
+
+    <div class="section">
+        <h2>Text zu Sprache</h2>
+        <textarea id="inputText" placeholder="Text eingeben...">Dies ist ein Test.</textarea>
+        
+        <div>
+            <label>Sprache:</label>
+            <select id="language" onchange="updateVoices()">
+                <option value="DE">Deutsch (DE)</option>
+                <option value="EN">English (EN)</option>
+                <option value="FR">Français (FR)</option>
+                <option value="ES">Español (ES)</option>
+            </select>
+
+            <label>Stimme:</label>
+            <select id="voice"></select>
+        </div>
+
+        <div class="button-group">
+            <button onclick="playLine()">Zeile abspielen</button>
+            <button onclick="makeFiles()">MP3/SRT erstellen</button>
+        </div>
+
+        <div id="result" class="result" style="display: none;"></div>
+        <div id="audioPlayer" style="display: none;"></div>
+    </div>
+
+    <script>
+        const voices = {
+            "EN": ['Danielle', 'Gregory', 'Ivy', 'Joanna', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin',
+                   'Matthew', 'Ruth', 'Stephen'],
+            "DE": ["Daniel", "Vicki"],
+            "FR": ["Lea", "Remi"],
+            "ES": ["Lucia", "Sergio"]
+        };
+
+        function updateVoices() {
+            const language = document.getElementById('language').value;
+            const voiceSelect = document.getElementById('voice');
+            voiceSelect.innerHTML = '';
+            
+            voices[language].forEach(voice => {
+                const option = document.createElement('option');
+                option.value = voice;
+                option.textContent = voice;
+                voiceSelect.appendChild(option);
+            });
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                document.getElementById('statusResult').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('statusResult').textContent = `Fehler: ${error.message}`;
+            }
+        }
+
+        async function testPolly() {
+            try {
+                document.getElementById('statusResult').textContent = "Teste AWS Polly Verbindung...";
+                const response = await fetch('/api/test-polly', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+                document.getElementById('statusResult').textContent = `AWS Polly Test: ${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                document.getElementById('statusResult').textContent = `Fehler: ${error.message}`;
+            }
+        }
+
+        async function testTranslator() {
+            try {
+                document.getElementById('statusResult').textContent = "Teste Übersetzer Verbindung...";
+                const response = await fetch('/api/test-translator', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+                document.getElementById('statusResult').textContent = `Übersetzer Test: ${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                document.getElementById('statusResult').textContent = `Fehler: ${error.message}`;
+            }
+        }
+
+        async function playLine() {
+            const text = document.getElementById('inputText').value;
+            const cursorPosition = document.getElementById('inputText').selectionStart;
+            const voices = {
+                'EN': document.getElementById('voice').value,
+                'DE': document.getElementById('voice').value
+            };
+            const origLang = document.getElementById('language').value;
+
+            try {
+                const response = await fetch('/api/play-line', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text,
+                        cursorPosition,
+                        voices,
+                        origLang
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Entferne vorhandene Audio-Elemente
+                const oldAudio = document.querySelector('.audio-player');
+                if (oldAudio) {
+                    oldAudio.remove();
+                }
+
+                // Erstelle ein verstecktes Audio-Element und spiele es sofort ab
+                const audio = new Audio(`/api/play/${data.file_name_mp3}`);
+                audio.style.display = 'none';
+                document.body.appendChild(audio);
+                audio.play();
+
+            } catch (error) {
+                console.error('Fehler beim Abspielen:', error);
+                alert('Fehler beim Abspielen: ' + error.message);
+            }
+        }
+
+        async function makeFiles() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = "Starte Verarbeitung...";
+
+            try {
+                const response = await fetch('/api/make-files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: document.getElementById('inputText').value,
+                        voices: {
+                            [document.getElementById('language').value]: document.getElementById('voice').value
+                        },
+                        origLang: document.getElementById('language').value
+                    })
+                });
+
+                const { workerId } = await response.json();
+
+                const checkProgress = async () => {
+                    const progressResponse = await fetch(`/api/worker/${workerId}`);
+                    const workerStatus = await progressResponse.json();
+
+                    if (workerStatus.status === 'completed') {
+                        if (workerStatus.result && workerStatus.result.error) {
+                            resultDiv.textContent = `Fehler: ${workerStatus.result.error}`;
+                        } else if (workerStatus.result && workerStatus.result.download_file_name) {
+                            resultDiv.innerHTML = `
+                                Verarbeitung abgeschlossen!<br>
+                                <a href="/api/download/${workerStatus.result.download_file_name}" target="_blank">
+                                    Dateien herunterladen
+                                </a>
+                            `;
+                        }
+                        return;
+                    }
+
+                    resultDiv.textContent = `${workerStatus.stage} (${Math.round(workerStatus.progress)}%)`;
+                    setTimeout(checkProgress, 500);
+                };
+
+                checkProgress();
+            } catch (error) {
+                resultDiv.textContent = `Fehler: ${error.message}`;
+            }
+        }
+
+        // Initialize voices on page load
+        updateVoices();
+    </script>
+</body>
+</html> 
