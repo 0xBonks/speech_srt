@@ -70,6 +70,21 @@
                 <option value="EN">English (EN)</option>
                 <option value="FR">Français (FR)</option>
                 <option value="ES">Español (ES)</option>
+                <option value="IT">Italiano (IT)</option>
+                <option value="PL">Polski (PL)</option>
+                <option value="PT">Português (PT)</option>
+                <option value="RU">Русский (RU)</option>
+                <option value="JA">日本語 (JA)</option>
+                <option value="ZH">中文 (ZH)</option>
+                <option value="AR">العربية (AR)</option>
+                <option value="NL">Nederlands (NL)</option>
+                <option value="CS">Čeština (CS)</option>
+                <option value="DA">Dansk (DA)</option>
+                <option value="FI">Suomi (FI)</option>
+                <option value="KO">한국어 (KO)</option>
+                <option value="NB">Norsk (NB)</option>
+                <option value="SV">Svenska (SV)</option>
+                <option value="TR">Türkçe (TR)</option>
             </select>
 
             <label>Stimme:</label>
@@ -79,6 +94,7 @@
         <div class="button-group">
             <button onclick="playLine()">Zeile abspielen</button>
             <button onclick="makeFiles()">MP3/SRT erstellen</button>
+            <button onclick="addTranslation()">Übersetzung hinzufügen</button>
         </div>
 
         <div id="result" class="result" style="display: none;"></div>
@@ -91,7 +107,22 @@
                    'Matthew', 'Ruth', 'Stephen'],
             "DE": ["Daniel", "Vicki"],
             "FR": ["Lea", "Remi"],
-            "ES": ["Lucia", "Sergio"]
+            "ES": ["Lucia", "Sergio"],
+            "IT": ["Bianca", "Adriano"],
+            "PL": ["Ola"],
+            "PT": ["Ines"],
+            "RU": ["Maxim", "Tatyana"],
+            "JA": ["Kazuha", "Takumi", "Tomoko"],
+            "ZH": ["Zhiyu"],
+            "AR": ["Hala", "Zayd"],
+            "NL": ["Laura"],
+            "CS": ["Jitka"],
+            "DA": ["Sofie"],
+            "FI": ["Suvi"],
+            "KO": ["Seoyeon"],
+            "NB": ["Ida"],
+            "SV": ["Elin"],
+            "TR": ["Burcu"]
         };
 
         function updateVoices() {
@@ -242,6 +273,122 @@
                 checkProgress();
             } catch (error) {
                 resultDiv.textContent = `Fehler: ${error.message}`;
+            }
+        }
+
+        async function addTranslation() {
+            const text = document.getElementById('inputText').value;
+            const targetLang = document.getElementById('language').value;
+            const textArea = document.getElementById('inputText');
+            
+            // Text bereinigen und Original-Text extrahieren
+            let origText = text;
+            let origLang = 'DE'; // Standard ist Deutsch
+            
+            // Wenn der Text bereits Übersetzungen enthält
+            if (text.includes('---')) {
+                const parts = text.split('---');
+                const lines = parts[1].trim().split('\n');
+                
+                // Finde die erste Sprach-Zeile
+                for (const line of lines) {
+                    const match = line.match(/#([A-Z]{2}): (.*)/);
+                    if (match) {
+                        origLang = match[1];
+                        origText = match[2].trim();
+                        break;
+                    }
+                }
+            }
+            
+            // Wenn Zielsprache gleich Originalsprache ist, Warnung ausgeben
+            if (targetLang === origLang) {
+                alert('Bitte wählen Sie eine andere Sprache als die Originalsprache aus.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/add-translation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: origText,
+                        targetLang,
+                        origLang
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const { workerId } = await response.json();
+                const resultDiv = document.getElementById('result');
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = "Übersetze...";
+
+                const checkProgress = async () => {
+                    const progressResponse = await fetch(`/api/worker/${workerId}`);
+                    const workerStatus = await progressResponse.json();
+
+                    if (workerStatus.status === 'completed') {
+                        if (workerStatus.result && workerStatus.result.error) {
+                            resultDiv.textContent = `Fehler: ${workerStatus.result.error}`;
+                        } else if (workerStatus.result && workerStatus.result.text) {
+                            // Format the output properly
+                            let newText = '---\n';
+                            
+                            // Add original text first
+                            newText += `#${origLang}: ${origText}\n`;
+                            
+                            // Add existing translations if any
+                            if (text.includes('---')) {
+                                const parts = text.split('---');
+                                const existingTranslations = parts[1].trim().split('\n');
+                                for (const line of existingTranslations) {
+                                    const match = line.match(/#([A-Z]{2}): (.*)/);
+                                    if (match && match[1] !== origLang && match[1] !== targetLang) {
+                                        newText += `${line}\n`;
+                                    }
+                                }
+                            }
+                            
+                            // Extract and add the new translation
+                            const translatedLines = workerStatus.result.text.split('\n');
+                            let translatedText = '';
+                            for (const line of translatedLines) {
+                                if (line.startsWith(`#${targetLang}:`)) {
+                                    translatedText = line.substring(line.indexOf(':') + 1).trim();
+                                    break;
+                                }
+                            }
+                            
+                            if (!translatedText) {
+                                console.error('Keine Übersetzung gefunden in:', workerStatus.result.text);
+                                throw new Error('Keine Übersetzung gefunden');
+                            }
+                            
+                            newText += `#${targetLang}: ${translatedText}`;
+                            
+                            textArea.value = newText;
+                            resultDiv.textContent = 'Übersetzung hinzugefügt!';
+                            setTimeout(() => {
+                                resultDiv.style.display = 'none';
+                            }, 3000);
+                        }
+                        return;
+                    }
+
+                    resultDiv.textContent = `${workerStatus.stage} (${Math.round(workerStatus.progress)}%)`;
+                    setTimeout(checkProgress, 500);
+                };
+
+                checkProgress();
+            } catch (error) {
+                console.error('Fehler bei der Übersetzung:', error);
+                alert('Fehler bei der Übersetzung: ' + error.message);
             }
         }
 

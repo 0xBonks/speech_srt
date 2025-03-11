@@ -227,20 +227,19 @@ app.post('/api/play-line', async (req, res) => {
 app.post('/api/add-translation', async (req, res) => {
   try {
     const { text, targetLang, origLang } = req.body;
-    
+
     if (!text || !targetLang || !origLang) {
       return res.status(400).json({ error: 'Missing parameters' });
     }
-    
+
     const workerId = uuidv4();
-    
     workers[workerId] = {
       status: 'started',
       progress: 0,
       stage: 'Initializing translation',
       result: null
     };
-    
+
     (async () => {
       try {
         const translator = new Translation(
@@ -248,32 +247,50 @@ app.post('/api/add-translation', async (req, res) => {
           appEnv.translatorKey,
           !appEnv.ignoreTranslatorSslCert
         );
-        
-        const lines = text.split('\n');
-        const translatedLines = [];
-        
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          
-          workers[workerId].progress = (i / lines.length) * 100;
-          workers[workerId].stage = `Translating line ${i+1} of ${lines.length}`;
-          
-          if (line === '' || line.startsWith('#')) {
-            translatedLines.push(line);
-            continue;
-          }
-          
-          try {
-            const translatedLine = await translator.translateText(line, targetLang, origLang);
-            translatedLines.push(`#${targetLang}: ${translatedLine}`);
-          } catch (e) {
-            console.error(`Error translating line ${i+1}:`, e);
-            translatedLines.push(`#${targetLang}: ERROR: ${e.message}`);
+
+        // Split text into lines and prepare for translation
+        let lines = text.split('\n');
+        let translatedText = '';
+        let originalText = '';
+
+        // If text already contains translations (has ---)
+        if (text.includes('---')) {
+          const parts = text.split('---');
+          lines = parts[1].trim().split('\n');
+          translatedText = '---\n';
+        } else {
+          // This is the first translation, use the input text as original
+          originalText = text;
+          translatedText = '---\n';
+          translatedText += `#${origLang}: ${originalText}\n`;
+        }
+
+        // Add existing translations
+        for (const line of lines) {
+          if (line.startsWith('#') && !line.startsWith(`#${targetLang}:`)) {
+            translatedText += line + '\n';
           }
         }
+
+        // Get the text to translate
+        let textToTranslate = '';
+        if (text.includes('---')) {
+          // Find original language text
+          const origLine = lines.find(l => l.startsWith(`#${origLang}:`));
+          if (origLine) {
+            textToTranslate = origLine.substring(origLine.indexOf(':') + 1).trim();
+          }
+        } else {
+          textToTranslate = originalText;
+        }
+
+        // Perform the translation
+        workers[workerId].stage = 'Translating';
+        workers[workerId].progress = 50;
         
-        const translatedText = text + '\n---\n' + translatedLines.join('\n');
-        
+        const translatedLine = await translator.translateText(textToTranslate, targetLang, origLang);
+        translatedText += `#${targetLang}: ${translatedLine}`;
+
         workers[workerId].progress = 100;
         workers[workerId].stage = 'Translation completed';
         workers[workerId].status = 'completed';
@@ -284,10 +301,10 @@ app.post('/api/add-translation', async (req, res) => {
         workers[workerId].result = { error: error.message };
       }
     })();
-    
+
     res.json({ workerId });
   } catch (error) {
-    console.error('Error adding translation:', error);
+    console.error('Error in add-translation:', error);
     res.status(500).json({ error: error.message });
   }
 });
