@@ -22,38 +22,42 @@ class AwsPolly {
         textLength: text.length
       });
 
+      // Ensure text is properly wrapped in SSML if not already
+      let ssmlText = text;
+      if (!ssmlText.includes('<speak>')) {
+        ssmlText = `<speak>${ssmlText}</speak>`;
+      }
+
       const params = {
         OutputFormat: 'mp3',
-        Text: text,
+        Text: ssmlText,
         TextType: 'ssml',
         VoiceId: voiceId,
         Engine: engine,
         LanguageCode: languageCode,
-        SampleRate: '22050'  // Explizit Sample Rate setzen
+        SampleRate: '22050'
       };
       
-      console.log('Sending request to AWS Polly...');
+      console.log('Sending request to AWS Polly with SSML:', ssmlText);
       const response = await this.polly.synthesizeSpeech(params).promise();
       
       if (!response.AudioStream) {
         throw new Error('No AudioStream in AWS Polly response');
       }
       
-      if (response.AudioStream.length < 100) { // Eine gültige MP3 sollte größer sein
-        throw new Error('AudioStream is too small to be valid MP3');
-      }
-      
       console.log('AWS Polly synthesis successful, audio size:', response.AudioStream.length, 'bytes');
       return response.AudioStream;
     } catch (error) {
+      console.error('AWS Polly synthesis error:', error);
       if (error.code === 'CredentialsError') {
-        console.error('AWS Credentials error:', error);
         throw new Error('Invalid AWS credentials');
       } else if (error.code === 'InvalidSampleRateException') {
-        console.error('Sample rate error:', error);
         throw new Error('Invalid sample rate');
+      } else if (error.code === 'InvalidSsmlException') {
+        throw new Error(`Invalid SSML request: ${error.message}. Text was: ${text}`);
+      } else if (error.code === 'MissingRequiredParameter') {
+        throw new Error(`Missing required parameter: ${error.message}`);
       } else {
-        console.error('AWS Polly synthesis error:', error);
         throw error;
       }
     }
@@ -61,9 +65,15 @@ class AwsPolly {
   
   async getSpeechMarks(text, voiceId, engine = 'standard', languageCode = 'en-US') {
     try {
+      // Ensure text is properly wrapped in SSML if not already
+      let ssmlText = text;
+      if (!ssmlText.includes('<speak>')) {
+        ssmlText = `<speak>${ssmlText}</speak>`;
+      }
+      
       const params = {
         OutputFormat: 'json',
-        Text: text,
+        Text: ssmlText,
         TextType: 'ssml',
         VoiceId: voiceId,
         Engine: engine,
@@ -71,12 +81,39 @@ class AwsPolly {
         SpeechMarkTypes: ['sentence', 'ssml']
       };
       
+      console.log('Sending request for speech marks to AWS Polly');
       const response = await this.polly.synthesizeSpeech(params).promise();
+      
+      if (!response.AudioStream) {
+        throw new Error('No AudioStream in AWS Polly response for speech marks');
+      }
+      
       const markData = response.AudioStream.toString().split('\n');
-      return markData.filter(line => line.trim() !== '').map(line => JSON.parse(line));
+      const parsedMarks = markData
+        .filter(line => line.trim() !== '')
+        .map(line => {
+          try {
+            return JSON.parse(line);
+          } catch (e) {
+            console.error('Error parsing speech mark:', line, e);
+            return null;
+          }
+        })
+        .filter(mark => mark !== null);
+      
+      console.log(`Received ${parsedMarks.length} speech marks from AWS Polly`);
+      return parsedMarks;
     } catch (error) {
-      console.error('Fehler beim Abrufen der Sprachmarken:', error);
-      throw error;
+      console.error('Error getting speech marks:', error);
+      if (error.code === 'CredentialsError') {
+        throw new Error('Invalid AWS credentials');
+      } else if (error.code === 'InvalidSsmlException') {
+        throw new Error(`Invalid SSML request for speech marks: ${error.message}. Text was: ${text}`);
+      } else if (error.code === 'MissingRequiredParameter') {
+        throw new Error(`Missing required parameter for speech marks: ${error.message}`);
+      } else {
+        throw error;
+      }
     }
   }
 }

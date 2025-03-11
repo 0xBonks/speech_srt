@@ -95,6 +95,7 @@
             <button onclick="playLine()">Zeile abspielen</button>
             <button onclick="makeFiles()">MP3/SRT erstellen</button>
             <button onclick="addTranslation()">Übersetzung hinzufügen</button>
+            <button onclick="clearText()">Text löschen</button>
         </div>
 
         <div id="result" class="result" style="display: none;"></div>
@@ -179,70 +180,275 @@
         }
 
         async function playLine() {
-            const text = document.getElementById('inputText').value;
-            const cursorPosition = document.getElementById('inputText').selectionStart;
-            const voices = {
-                'EN': document.getElementById('voice').value,
-                'DE': document.getElementById('voice').value
-            };
-            const origLang = document.getElementById('language').value;
-
             try {
+                const text = document.getElementById('inputText').value;
+                
+                // Prüfen ob das Textfeld leer ist
+                if (!text.trim()) {
+                    showMessage('Fehler: Das Textfeld ist leer. Bitte geben Sie Text ein.');
+                    return;
+                }
+                
+                const cursorPosition = document.getElementById('inputText').selectionStart;
+                const origLang = document.getElementById('language').value;
+                
+                // Create voices object with the selected voice for the language
+                const voiceSelect = document.getElementById('voice');
+                const selectedVoice = voiceSelect.value;
+                const allVoices = {};
+                
+                // Ensure we have a voice for each language that might be in translations
+                for (const lang in voices) {
+                    allVoices[lang] = voices[lang][0]; // Default to first voice for each language
+                }
+                allVoices[origLang] = selectedVoice; // Use selected voice for original language
+                
+                const selectedLine = getLineByPos(text, cursorPosition);
+                if (!selectedLine) {
+                    showMessage('Keine Zeile an der Cursor-Position gefunden');
+                    return;
+                }
+
+                showMessage('Bereite Audio vor...');
+                console.log('Selected line:', selectedLine);
+
+                // Extrahiere alle Übersetzungen für die aktuelle Zeile
+                const translations = extractTranslationsForLine(text, selectedLine, cursorPosition);
+                console.log('Found translations:', translations);
+                
+                // Wenn Übersetzungen verfügbar sind, zeige Sprachauswahl-Dialog
+                if (Object.keys(translations).length > 0) {
+                    const langToPlay = await showLanguageSelectionDialog(translations);
+                    if (!langToPlay) return; // Benutzer hat abgebrochen
+                    
+                    const textToPlay = translations[langToPlay];
+                    console.log(`Playing ${langToPlay} translation: "${textToPlay}"`);
+                    await playAudioForLanguage(textToPlay, allVoices[langToPlay], langToPlay);
+                } else {
+                    // Keine Übersetzungen gefunden, spiele Originaltext
+                    console.log(`Playing original text in ${origLang}: "${selectedLine}"`);
+                    await playAudioForLanguage(selectedLine, allVoices[origLang], origLang);
+                }
+            } catch (error) {
+                console.error('Error in playLine function:', error);
+                showMessage(`Fehler: ${error.message}`);
+            }
+        }
+
+        function extractTranslationsForLine(fullText, selectedLine, cursorPosition) {
+            const translations = {};
+            const lines = fullText.split('\n');
+            
+            // Finde den Block mit Übersetzungen
+            let blockStart = -1;
+            let currentLine = 0;
+            let currentPos = 0;
+            
+            // Finde den relevanten Übersetzungsblock
+            for (let i = 0; i < lines.length; i++) {
+                currentPos += lines[i].length + 1;
+                if (currentPos > cursorPosition) {
+                    // Gehe zurück bis zum letzten "---"
+                    for (let j = i; j >= 0; j--) {
+                        if (lines[j].trim() === '---') {
+                            blockStart = j;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            
+            if (blockStart === -1) {
+                return translations;
+            }
+            
+            // Extrahiere alle Übersetzungen aus dem Block
+            for (let i = blockStart + 1; i < lines.length && lines[i].trim() !== '---'; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('#')) {
+                    const match = line.match(/^#([A-Z]{2}): (.+)$/);
+                    if (match) {
+                        const [_, lang, text] = match;
+                        translations[lang] = text;
+                    }
+                }
+            }
+            
+            return translations;
+        }
+
+        async function showLanguageSelectionDialog(translations) {
+            // Erstelle einen Dialog für die Sprachauswahl
+            const dialog = document.createElement('div');
+            dialog.style.position = 'fixed';
+            dialog.style.top = '50%';
+            dialog.style.left = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.backgroundColor = 'white';
+            dialog.style.padding = '20px';
+            dialog.style.border = '1px solid #ccc';
+            dialog.style.borderRadius = '5px';
+            dialog.style.zIndex = '1000';
+            dialog.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+            
+            dialog.innerHTML = `
+                <h3 style="margin-top: 0">Sprache zum Abspielen wählen</h3>
+                <div style="margin-bottom: 15px">
+                    ${Object.entries(translations).map(([lang, text]) => `
+                        <div style="margin: 10px 0">
+                            <button class="lang-select" data-lang="${lang}" style="width: 100%; padding: 8px; margin: 2px 0">
+                                ${getLangName(lang)} (${lang})
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+                <button id="cancelLangSelect" style="width: 100%; padding: 8px">Abbrechen</button>
+            `;
+            
+            document.body.appendChild(dialog);
+            
+            return new Promise((resolve) => {
+                // Event-Handler für Sprachauswahl
+                dialog.querySelectorAll('.lang-select').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const selectedLang = button.dataset.lang;
+                        document.body.removeChild(dialog);
+                        resolve(selectedLang);
+                    });
+                });
+                
+                // Abbrechen-Button
+                document.getElementById('cancelLangSelect').addEventListener('click', () => {
+                    document.body.removeChild(dialog);
+                    resolve(null);
+                });
+            });
+        }
+
+        function getLangName(langCode) {
+            const langNames = {
+                'DE': 'Deutsch',
+                'EN': 'Englisch',
+                'FR': 'Französisch',
+                'ES': 'Spanisch',
+                'IT': 'Italienisch',
+                'PL': 'Polnisch',
+                'PT': 'Portugiesisch',
+                'RU': 'Russisch',
+                'JA': 'Japanisch',
+                'ZH': 'Chinesisch',
+                'AR': 'Arabisch',
+                'NL': 'Niederländisch',
+                'CS': 'Tschechisch',
+                'DA': 'Dänisch',
+                'FI': 'Finnisch',
+                'KO': 'Koreanisch',
+                'NB': 'Norwegisch',
+                'SV': 'Schwedisch',
+                'TR': 'Türkisch'
+            };
+            return langNames[langCode] || langCode;
+        }
+
+        async function playAudioForLanguage(text, voice, lang) {
+            try {
+                showMessage(`Erzeuge Audio in ${getLangName(lang)}...`);
+                console.log(`Creating audio for ${lang} with voice ${voice}:`, text);
+                
                 const response = await fetch('/api/play-line', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        text,
-                        cursorPosition,
-                        voices,
-                        origLang
+                        text: text,
+                        cursorPosition: 0,
+                        voices: { [lang]: voice },
+                        origLang: lang
                     })
                 });
-
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
                 }
-
+                
                 const data = await response.json();
                 if (data.error) {
                     throw new Error(data.error);
                 }
-
-                // Entferne vorhandene Audio-Elemente
-                const oldAudio = document.querySelector('.audio-player');
-                if (oldAudio) {
-                    oldAudio.remove();
-                }
-
-                // Erstelle ein verstecktes Audio-Element und spiele es sofort ab
-                const audio = new Audio(`/api/play/${data.file_name_mp3}`);
-                audio.style.display = 'none';
-                document.body.appendChild(audio);
-                audio.play();
-
+                
+                console.log('Audio file ready:', data.file_name_mp3);
+                showMessage(`Spiele Audio in ${getLangName(lang)}...`);
+                
+                // Audio-Element erstellen, aber nicht sichtbar anzeigen
+                const audioElement = new Audio(`/api/play/${data.file_name_mp3}`);
+                
+                // Event-Handler hinzufügen
+                audioElement.onerror = (e) => {
+                    console.error('Audio error:', e);
+                    showMessage('Fehler beim Abspielen des Audios');
+                };
+                
+                audioElement.onplay = () => {
+                    console.log('Audio playback started');
+                };
+                
+                audioElement.onended = () => {
+                    console.log('Audio playback completed');
+                    showMessage(`Audio-Wiedergabe beendet (${getLangName(lang)})`);
+                };
+                
+                // Audio abspielen
+                await audioElement.play();
+                
+                return new Promise((resolve) => {
+                    audioElement.onended = resolve;
+                    audioElement.onerror = resolve;
+                });
             } catch (error) {
-                console.error('Fehler beim Abspielen:', error);
-                alert('Fehler beim Abspielen: ' + error.message);
+                console.error('Error playing audio:', error);
+                showMessage(`Fehler: ${error.message}`);
             }
         }
 
         async function makeFiles() {
-            const resultDiv = document.getElementById('result');
-            resultDiv.style.display = 'block';
-            resultDiv.textContent = "Starte Verarbeitung...";
-
             try {
+                const text = document.getElementById('inputText').value;
+                
+                // Prüfen ob das Textfeld leer ist
+                if (!text.trim()) {
+                    showMessage('Fehler: Das Textfeld ist leer. Bitte geben Sie Text ein.');
+                    return;
+                }
+                
+                const resultDiv = document.getElementById('result');
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = "Starte Verarbeitung...";
+
+                // Sammle alle verfügbaren Übersetzungen
+                const origLang = document.getElementById('language').value;
+                
+                // Erstelle ein Objekt mit allen Stimmen
+                const allVoices = {};
+                for (const lang in voices) {
+                    // Wähle die erste Stimme für jede Sprache, wenn keine ausgewählt ist
+                    allVoices[lang] = voices[lang][0];
+                }
+                
+                // Überschreibe mit der ausgewählten Stimme für die Originalsprache
+                allVoices[origLang] = document.getElementById('voice').value;
+                
+                console.log('Creating files with voices:', allVoices);
+
                 const response = await fetch('/api/make-files', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        text: document.getElementById('inputText').value,
-                        voices: {
-                            [document.getElementById('language').value]: document.getElementById('voice').value
-                        },
-                        origLang: document.getElementById('language').value
+                        text: text,
+                        voices: allVoices,
+                        origLang: origLang
                     })
                 });
 
@@ -277,37 +483,44 @@
         }
 
         async function addTranslation() {
-            const text = document.getElementById('inputText').value;
-            const targetLang = document.getElementById('language').value;
-            const textArea = document.getElementById('inputText');
-            
-            // Text bereinigen und Original-Text extrahieren
-            let origText = text;
-            let origLang = 'DE'; // Standard ist Deutsch
-            
-            // Wenn der Text bereits Übersetzungen enthält
-            if (text.includes('---')) {
-                const parts = text.split('---');
-                const lines = parts[1].trim().split('\n');
+            try {
+                const text = document.getElementById('inputText').value;
                 
-                // Finde die erste Sprach-Zeile
-                for (const line of lines) {
-                    const match = line.match(/#([A-Z]{2}): (.*)/);
-                    if (match) {
-                        origLang = match[1];
-                        origText = match[2].trim();
-                        break;
+                // Prüfen ob das Textfeld leer ist
+                if (!text.trim()) {
+                    showMessage('Fehler: Das Textfeld ist leer. Bitte geben Sie Text ein.');
+                    return;
+                }
+                
+                const targetLang = document.getElementById('language').value;
+                const textArea = document.getElementById('inputText');
+                
+                // Text bereinigen und Original-Text extrahieren
+                let origText = text;
+                let origLang = 'DE'; // Standard ist Deutsch
+                
+                // Wenn der Text bereits Übersetzungen enthält
+                if (text.includes('---')) {
+                    const parts = text.split('---');
+                    const lines = parts[1].trim().split('\n');
+                    
+                    // Finde die erste Sprach-Zeile
+                    for (const line of lines) {
+                        const match = line.match(/#([A-Z]{2}): (.*)/);
+                        if (match) {
+                            origLang = match[1];
+                            origText = match[2].trim();
+                            break;
+                        }
                     }
                 }
-            }
-            
-            // Wenn Zielsprache gleich Originalsprache ist, Warnung ausgeben
-            if (targetLang === origLang) {
-                alert('Bitte wählen Sie eine andere Sprache als die Originalsprache aus.');
-                return;
-            }
+                
+                // Wenn Zielsprache gleich Originalsprache ist, Warnung ausgeben
+                if (targetLang === origLang) {
+                    alert('Bitte wählen Sie eine andere Sprache als die Originalsprache aus.');
+                    return;
+                }
 
-            try {
                 const response = await fetch('/api/add-translation', {
                     method: 'POST',
                     headers: {
@@ -390,6 +603,45 @@
                 console.error('Fehler bei der Übersetzung:', error);
                 alert('Fehler bei der Übersetzung: ' + error.message);
             }
+        }
+
+        function getSelectedVoices() {
+            const voices = {};
+            const language = document.getElementById('language').value;
+            const voice = document.getElementById('voice').value;
+            voices[language] = voice;
+            return voices;
+        }
+
+        function getLineByPos(text, pos) {
+            const lines = text.split('\n');
+            let currentPos = 0;
+            
+            for (const line of lines) {
+                if (currentPos <= pos && currentPos + line.length >= pos) {
+                    return line;
+                }
+                currentPos += line.length + 1; // +1 für das '\n' Zeichen
+            }
+            
+            return null;
+        }
+
+        function showMessage(message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.textContent = message;
+            
+            // Nach 3 Sekunden ausblenden
+            setTimeout(() => {
+                resultDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // Funktion zum Löschen des Textfeldes
+        function clearText() {
+            document.getElementById('inputText').value = '';
+            showMessage('Text gelöscht');
         }
 
         // Initialize voices on page load

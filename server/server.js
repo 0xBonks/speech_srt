@@ -27,8 +27,8 @@ const appEnv = {
   pollyKeyId: process.env.POLLY_KEY_ID,
   pollySecretKey: process.env.POLLY_SECRET_KEY,
   pollyRegion: process.env.POLLY_REGION || 'eu-west-1',
-  translatorKey: process.env.TRANSLATOR_KEY,
-  translatorUrl: process.env.TRANSLATOR_URL,
+  translatorKey: process.env.TRANSLATOR_API_KEY_FREE_DEEPL,
+  translatorUrl: process.env.TRANSLATOR_URL_FREE_DEEPL,
   ignoreTranslatorSslCert: process.env.IGNORE_TRANSLATOR_SSL_CERT === 'true'
 };
 
@@ -178,14 +178,42 @@ app.post('/api/play-line', async (req, res) => {
       return res.status(400).json({ error: 'No text provided' });
     }
     
-    const line = utils.getLineByPos(text, cursorPosition);
-    console.log('Text line to synthesize:', line);
+    console.log('Play line request:', { 
+      textLength: text.length, 
+      cursorPosition, 
+      voices, 
+      origLang 
+    });
     
-    if (!line) {
-      return res.status(400).json({ error: 'No line found at cursor position' });
+    let lineText = text;
+    
+    // Wenn der Text direkt übergeben wird (bei Übersetzungsauswahl)
+    if (cursorPosition === 0 && text.length > 0) {
+      lineText = text;
+    } else {
+      // Sonst extrahiere die Zeile an der Cursor-Position
+      lineText = utils.getLineByPos(text, cursorPosition);
+      console.log('Text line to synthesize:', lineText);
+      
+      if (!lineText) {
+        return res.status(400).json({ error: 'No line found at cursor position' });
+      }
     }
     
-    const hash = crypto.createHash('sha256').update(line + voices[origLang]).digest('hex');
+    // Entferne Sprachpräfixe wie "#DE: " oder "#EN: " aus dem Text
+    const langPrefixMatch = lineText.match(/^#([A-Z]{2}): (.*)/);
+    if (langPrefixMatch) {
+      lineText = langPrefixMatch[2];
+    }
+    
+    console.log('Cleaned text for synthesis:', lineText);
+    
+    // Überprüfe, ob die Stimme für die Sprache existiert
+    if (!voices[origLang]) {
+      return res.status(400).json({ error: `No voice selected for language ${origLang}` });
+    }
+    
+    const hash = crypto.createHash('sha256').update(lineText + voices[origLang]).digest('hex');
     const tempFilePath = path.join(appEnv.tempPlayFolder, `${hash}.mp3`);
     
     if (!fs.existsSync(tempFilePath)) {
@@ -197,7 +225,7 @@ app.post('/api/play-line', async (req, res) => {
       });
       
       mp3SrtSynth.addLang(voices[origLang], origLang);
-      await mp3SrtSynth.synthOnePhraseMp3ToFile(`<s>${line}</s>`, tempFilePath, origLang);
+      await mp3SrtSynth.synthOnePhraseMp3ToFile(`<s>${lineText}</s>`, tempFilePath, origLang);
       
       // Check if file was created and has content
       if (fs.existsSync(tempFilePath)) {

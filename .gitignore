@@ -66,3 +66,4 @@ aws.json
 *.srt
 *.zip 
 speech_srt/
+old_python/

@@ -58,7 +58,7 @@ class Mp3SrtSynth {
 
     // Verfügbare Stimmen pro Sprache
     this.voices = {
-      "EN": ['Danielle', 'Gregory', 'Ivy', 'Joanna*', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin',
+      "EN": ['Danielle', 'Gregory', 'Ivy', 'Joanna', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin',
              'Matthew', 'Ruth', 'Stephen'],
       "DE": ["Daniel", "Vicki"],
       "FR": ["Lea", "Remi"],
@@ -82,7 +82,7 @@ class Mp3SrtSynth {
 
     // Neural Stimmen
     this.neuralVoices = [
-      'Danielle', 'Gregory', 'Ivy', 'Joanna*', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin',
+      'Danielle', 'Gregory', 'Ivy', 'Joanna', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin',
       'Matthew', 'Ruth', 'Stephen',
       "Daniel", "Vicki",
       "Lea", "Remi",
@@ -110,21 +110,27 @@ class Mp3SrtSynth {
   }
   
   addLang(voiceId, shortLangCode) {
-    // Check if voice is neural
-    const neuralVoices = [
-      'Danielle', 'Gregory', 'Ivy', 'Joanna', 'Kendra', 'Kimberly', 'Salli', 'Joey', 'Justin', 'Kevin',
-      'Matthew', 'Ruth', 'Stephen', 'Daniel', 'Vicki', 'Lea', 'Remi', 'Bianca', 'Adriano', 'Zhiyu',
-      'Kazuha', 'Takumi', 'Tomoko', 'Maxim', 'Tatyana', 'Lucia', 'Sergio', 'Ola', 'Ines', 'Hala',
-      'Zayd', 'Laura', 'Jitka', 'Sofie', 'Suvi', 'Seoyeon', 'Ida', 'Elin', 'Burcu'
-    ];
+    if (!voiceId) {
+      console.error(`Missing voice ID for language ${shortLangCode}`);
+      // Fallback to first voice in the list for this language
+      if (this.voices[shortLangCode] && this.voices[shortLangCode].length > 0) {
+        voiceId = this.voices[shortLangCode][0];
+        console.log(`Using fallback voice ${voiceId} for ${shortLangCode}`);
+      } else {
+        throw new Error(`No voices available for language ${shortLangCode}`);
+      }
+    }
     
-    const engine = neuralVoices.includes(voiceId) ? "neural" : "standard";
+    // Check if voice is neural
+    const engine = this.neuralVoices.includes(voiceId) ? "neural" : "standard";
     
     this.synthesizers[shortLangCode] = {
       voiceId,
       engine,
       languageCode: this.longLangCode[shortLangCode]
     };
+    
+    console.log(`Added synthesizer for ${shortLangCode}:`, this.synthesizers[shortLangCode]);
   }
   
   async calculateAdjustments(translations) {
@@ -196,14 +202,24 @@ class Mp3SrtSynth {
   }
   
   async synthMp3SrtToFiles(lines, mp3FilePath, srtFilePath, shortLangCode) {
-    const ssml = utils.linesToSsml(lines);
-    
     try {
       if (!this.synthesizers[shortLangCode]) {
         throw new Error(`No synthesizer configured for language ${shortLangCode}`);
       }
       
       const synth = this.synthesizers[shortLangCode];
+      
+      // Convert lines to properly formatted SSML
+      let ssml = '<speak>\n';
+      for (const line of lines) {
+        if (line.type === 'sentence') {
+          ssml += `<s>${line.value}</s>\n`;
+        } else if (line.type === 'break' && line.timeToNext > 0) {
+          ssml += `<break time="${line.timeToNext}ms"/>\n`;
+        }
+      }
+      ssml += '</speak>';
+      
       console.log('Synthesizing with config:', {
         voiceId: synth.voiceId,
         engine: synth.engine,
@@ -261,9 +277,25 @@ class Mp3SrtSynth {
         throw new Error(`No synthesizer configured for language ${shortLangCode}`);
       }
       
+      // Entferne Sprachpräfixe aus dem Text
+      let cleanedText = text;
+      const langPrefixMatch = text.match(/^#([A-Z]{2}): (.*)/);
+      if (langPrefixMatch) {
+        cleanedText = langPrefixMatch[2];
+      }
+      
+      // Wrap in <speak> tags if not already present
+      if (!cleanedText.includes('<speak>')) {
+        if (!cleanedText.includes('<s>')) {
+          cleanedText = `<speak><s>${cleanedText}</s></speak>`;
+        } else {
+          cleanedText = `<speak>${cleanedText}</speak>`;
+        }
+      }
+      
       const synth = this.synthesizers[shortLangCode];
       console.log('Synthesizing single phrase with config:', {
-        text,
+        text: cleanedText,
         voiceId: synth.voiceId,
         engine: synth.engine,
         languageCode: synth.languageCode
@@ -271,7 +303,7 @@ class Mp3SrtSynth {
       
       // Get audio stream from AWS Polly
       const audioStream = await this.awsPolly.synthesizeSpeech(
-        text,
+        cleanedText,
         synth.voiceId,
         synth.engine,
         synth.languageCode
@@ -301,27 +333,77 @@ class Mp3SrtSynth {
   
   async synthesizeAllLangs(translations, mp3FilePaths, srtFilePaths, reportProgress = null) {
     try {
-      const adjusted = await this.calculateAdjustments(translations);
-      
       if (reportProgress) {
-        reportProgress(1.0, "Making voice");
+        reportProgress(1.0, "Verarbeite Text");
       }
       
-      const numOfLang = Object.keys(adjusted).length;
+      // Extrahiere Übersetzungen aus dem Text
+      const processedTranslations = {};
+      
+      // Prüfe, ob es Übersetzungen mit dem Format #LANG: Text gibt
+      if (Object.keys(translations).length > 0) {
+        const firstLang = Object.keys(translations)[0];
+        const text = translations[firstLang];
+        
+        if (text.includes('---')) {
+          // Text enthält Übersetzungsblöcke
+          const lines = text.split('\n');
+          
+          for (const line of lines) {
+            if (line.trim() === '---') continue;
+            
+            const langMatch = line.match(/^#([A-Z]{2}): (.*)/);
+            if (langMatch) {
+              const [_, lang, langText] = langMatch;
+              processedTranslations[lang] = langText;
+            }
+          }
+        } else {
+          // Keine Übersetzungsblöcke, verwende den Text wie er ist
+          for (const [lang, text] of Object.entries(translations)) {
+            if (text.trim()) {
+              processedTranslations[lang] = text;
+            }
+          }
+        }
+      }
+      
+      console.log('Processed translations:', Object.keys(processedTranslations));
+      
+      // Berechne Anpassungen für die Zeilen
+      const adjusted = await this.calculateAdjustments(processedTranslations);
+      
+      if (reportProgress) {
+        reportProgress(10.0, "Erzeuge Audiodateien");
+      }
+      
+      const langs = Object.keys(adjusted);
       let count = 0;
       
-      for (const [shortLangCode, lines] of Object.entries(adjusted)) {
-        await this.synthMp3SrtToFiles(
-          lines,
-          mp3FilePaths[shortLangCode],
-          srtFilePaths[shortLangCode],
-          shortLangCode
-        );
+      for (const lang of langs) {
+        // Überprüfe, ob ein Synthesizer für diese Sprache konfiguriert ist
+        if (!this.synthesizers[lang]) {
+          console.warn(`Kein Synthesizer für Sprache ${lang} konfiguriert, überspringe...`);
+          count++;
+          continue;
+        }
         
-        count++;
-        
-        if (reportProgress) {
-          reportProgress(100 * count / numOfLang, `Making ${shortLangCode}`);
+        try {
+          await this.synthMp3SrtToFiles(
+            adjusted[lang],
+            mp3FilePaths[lang],
+            srtFilePaths[lang],
+            lang
+          );
+          
+          count++;
+          
+          if (reportProgress) {
+            reportProgress(10 + 90 * count / langs.length, `Erzeuge ${lang}`);
+          }
+        } catch (error) {
+          console.error(`Fehler bei der Synthese für ${lang}:`, error);
+          // Fahre mit der nächsten Sprache fort
         }
       }
       
