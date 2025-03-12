@@ -6,7 +6,7 @@
     "start": "node server/server.js"
   },
   "dependencies": {
-    "@infineon/infineon-design-system-vue": "32.3.0",
+    "@infineon/infineon-design-system-vue": "^32.3.0",
     "archiver": "^7.0.1",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.1",
