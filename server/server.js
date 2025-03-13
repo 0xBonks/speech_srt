@@ -27,9 +27,9 @@ const appEnv = {
   pollyKeyId: process.env.POLLY_KEY_ID,
   pollySecretKey: process.env.POLLY_SECRET_KEY,
   pollyRegion: process.env.POLLY_REGION || 'eu-west-1',
-  translatorKey: process.env.TRANSLATOR_API_KEY_FREE_DEEPL,
-  translatorUrl: process.env.TRANSLATOR_URL_FREE_DEEPL,
-  ignoreTranslatorSslCert: process.env.IGNORE_TRANSLATOR_SSL_CERT === 'true'
+  translatorKey: process.env.TRANSLATOR_KEY,
+  translatorUrl: process.env.TRANSLATOR_URL,
+  ignoreTranslatorSslCert: IGNORE_TRANSLATOR_SSL_CERT=1
 };
 
 // Ensure directories exist
