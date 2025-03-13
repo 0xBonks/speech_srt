@@ -16,6 +16,10 @@ import Navbar from './components/Navbar.vue'
 </script>
 
 <style>
+*{
+  font-family: "Source Sans 3", "sans-serif";
+}
+
 .app-container {
   display: flex;
   height: 100vh;
