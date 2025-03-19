@@ -12,6 +12,11 @@
         </div>
       </div>
 
+      <div v-if="errorMessage" class="error-message">
+        {{ errorMessage }}
+        <span class="close-error" @click="errorMessage = ''">&times;</span>
+      </div>
+
       <div class="main-content">
         <div class="column left-column">
           <h2>Translation</h2>
@@ -113,6 +118,7 @@ export default {
   name: 'VoiceoverAssistant',
   data() {
     return {
+      apiBaseUrl: import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:5001',
       originalLanguage: 'DE',
       targetLanguage: '',
       scriptText: '',
@@ -120,6 +126,7 @@ export default {
       selectedVoices: { 'DE': 'Daniel' },
       isLoading: false,
       downloadLink: null,
+      errorMessage: '',
       languages: {
         'DE': 'Deutsch',
         'EN': 'Englisch',
@@ -177,15 +184,48 @@ export default {
   methods: {
     async playLine() {
       try {
+        this.errorMessage = '';
         const text = this.scriptText;
         const cursorPosition = this.getCursorPosition();
         const voices = this.selectedVoices;
-        const origLang = this.originalLanguage;
+        let langToPlay = this.originalLanguage;
 
-        const response = await fetch('/api/play-line', {
+        if (!text.trim()) {
+          this.errorMessage = 'Bitte gib einen Text ein.';
+          alert(this.errorMessage);
+          return;
+        }
+
+        // Bestimme die Sprache an der Cursorposition
+        if (text.includes('---')) {
+          const line = this.getLineByPos(text, cursorPosition);
+          console.log("Aktuelle Zeile:", line);
+          
+          if (line) {
+            const langMatch = line.match(/^#([A-Z]{2}):/);
+            if (langMatch) {
+              langToPlay = langMatch[1];
+              console.log(`Erkannte Sprache an Cursor-Position: ${langToPlay}`);
+            }
+          }
+        }
+        
+        // Wenn keine Stimme für diese Sprache ausgewählt ist, verwende die erste verfügbare
+        if (!voices[langToPlay] && this.voices[langToPlay] && this.voices[langToPlay].length > 0) {
+          voices[langToPlay] = this.voices[langToPlay][0];
+        }
+
+        console.log('Spiele Zeile ab in Sprache:', langToPlay, 'mit Stimme:', voices[langToPlay]);
+
+        const response = await fetch(`${this.apiBaseUrl}/api/play-line`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, cursorPosition, voices, origLang })
+          body: JSON.stringify({ 
+            text, 
+            cursorPosition, 
+            voices, 
+            origLang: langToPlay // Verwende die erkannte Sprache
+          })
         });
 
         const data = await response.json();
@@ -193,120 +233,219 @@ export default {
           throw new Error(data.error);
         }
 
-        const audio = new Audio(`/api/play/${data.file_name_mp3}`);
+        const audio = new Audio(`${this.apiBaseUrl}/api/play/${data.file_name_mp3}`);
         audio.play();
       } catch (error) {
-        console.error('Fehler beim Abspielen der Zeile:', error);
+        this.errorMessage = `Fehler beim Abspielen der Zeile: ${error.message}`;
+        console.error(this.errorMessage, error);
+        alert(this.errorMessage);
       }
     },
     getCursorPosition() {
       const textarea = document.getElementById('inputText');
       return textarea ? textarea.selectionStart : 0;
     },
+    getLineByPos(text, position) {
+      if (!text || position === undefined || position < 0) {
+        return null;
+      }
+      
+      const lines = text.split('\n');
+      let currentPos = 0;
+      
+      for (const line of lines) {
+        const lineLength = line.length + 1; // +1 für den Zeilenumbruch
+        if (position >= currentPos && position < currentPos + lineLength) {
+          return line;
+        }
+        currentPos += lineLength;
+      }
+      
+      return null;
+    },
     async addLanguage() {
       try {
+        this.errorMessage = '';
         if (!this.targetLanguage) {
-          console.error('Bitte wähle eine Zielsprache aus.');
+          this.errorMessage = 'Bitte wähle eine Zielsprache aus.';
+          alert(this.errorMessage);
           return;
         }
         if (this.activeLanguages.includes(this.targetLanguage)) {
-          console.error('Diese Sprache wurde bereits hinzugefügt.');
+          this.errorMessage = 'Diese Sprache wurde bereits hinzugefügt.';
+          alert(this.errorMessage);
           return;
         }
         if (!this.scriptText.trim()) {
-          console.error('Bitte gib einen Text ein.');
+          this.errorMessage = 'Bitte gib einen Text ein.';
+          alert(this.errorMessage);
           return;
         }
+        
         this.isLoading = true;
-        let origText = this.scriptText;
+        let textToSend = this.scriptText;
         let origLang = this.originalLanguage;
+        
+        // Falls der Text bereits Übersetzungen enthält
         if (this.scriptText.includes('---')) {
           const parts = this.scriptText.split('---');
           const lines = parts[1].trim().split('\n');
+          
+          // Finde die Originalsprache
           for (const line of lines) {
             const match = line.match(/#([A-Z]{2}): (.*)/);
             if (match) {
               origLang = match[1];
-              origText = match[2].trim();
               break;
             }
           }
+          
+          // Sende den kompletten Text mit allen Übersetzungen
+          textToSend = this.scriptText;
         }
+        
         if (this.targetLanguage === origLang) {
-          console.error('Zielsprache darf nicht gleich der Originalsprache sein.');
+          this.errorMessage = 'Zielsprache darf nicht gleich der Originalsprache sein.';
+          alert(this.errorMessage);
+          this.isLoading = false;
           return;
         }
-        console.log('Übersetze...');
-        const response = await fetch('/api/add-translation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: origText,
-            targetLang: this.targetLanguage,
-            origLang: origLang
-          })
+        
+        console.log('Übersetze...', {
+          textToSend: textToSend.substring(0, 50) + (textToSend.length > 50 ? '...' : ''),
+          targetLang: this.targetLanguage,
+          origLang: origLang
         });
-        if (!response.ok) throw new Error(`HTTP-Fehler: ${response.status}`);
-        const { workerId } = await response.json();
+        
+        let responseData;
+        try {
+          const response = await fetch(`${this.apiBaseUrl}/api/add-translation`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: textToSend,
+              targetLang: this.targetLanguage,
+              origLang: origLang
+            })
+          });
+          
+          responseData = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(`HTTP-Fehler: ${response.status} - ${responseData.error || 'Unbekannter Fehler'}`);
+          }
+        } catch (error) {
+          throw new Error(`Fehler beim API-Aufruf: ${error.message}`);
+        }
+        
+        if (!responseData || !responseData.workerId) {
+          throw new Error('Keine gültige Worker-ID vom Server erhalten');
+        }
+        
+        const { workerId } = responseData;
+        console.log('Übersetzungs-Worker gestartet:', workerId);
+        
         const checkProgress = async () => {
-          const progressResponse = await fetch(`/api/worker/${workerId}`);
-          const workerStatus = await progressResponse.json();
-          if (workerStatus.status === 'completed') {
-            if (workerStatus.result.error) {
-              console.error('Fehler:', workerStatus.result.error);
-            } else if (workerStatus.result.text) {
-              let newText = '---\n';
-              newText += `#${origLang}: ${origText}\n`;
-              if (this.scriptText.includes('---')) {
-                const parts = this.scriptText.split('---');
-                const existingTranslations = parts[1].trim().split('\n');
-                for (const line of existingTranslations) {
-                  const match = line.match(/#([A-Z]{2}): (.*)/);
-                  if (match && match[1] !== origLang && match[1] !== this.targetLanguage) {
-                    newText += `${line}\n`;
+          try {
+            const progressUrl = `${this.apiBaseUrl}/api/worker/${workerId}`;
+            console.log('Prüfe Worker-Status:', progressUrl);
+            
+            const progressResponse = await fetch(progressUrl);
+            if (!progressResponse.ok) {
+              const errorText = await progressResponse.text();
+              throw new Error(`HTTP-Fehler bei Worker-Status: ${progressResponse.status} - ${errorText}`);
+            }
+            
+            const workerStatus = await progressResponse.json();
+            console.log('Worker-Status:', workerStatus);
+            
+            if (workerStatus.status === 'completed') {
+              if (workerStatus.result && workerStatus.result.error) {
+                this.errorMessage = `Fehler: ${workerStatus.result.error}`;
+                console.error(this.errorMessage);
+                alert(this.errorMessage);
+                this.isLoading = false;
+              } else if (workerStatus.result && workerStatus.result.text) {
+                // Formatiere den Text für die Anzeige
+                const translatedText = workerStatus.result.text;
+                console.log('Übersetzungsergebnis:', translatedText);
+                
+                // Text aktualisieren
+                this.scriptText = translatedText;
+                
+                // Extrahiere alle vorhandenen Sprachen aus dem übersetzten Text
+                const lines = translatedText.split('\n');
+                const languageCodes = [];
+                
+                for (const line of lines) {
+                  const match = line.match(/^#([A-Z]{2}):/);
+                  if (match && match[1]) {
+                    const langCode = match[1];
+                    if (!languageCodes.includes(langCode)) {
+                      languageCodes.push(langCode);
+                    }
                   }
                 }
-              }
-              const translatedLines = workerStatus.result.text.split('\n');
-              let translatedText = '';
-              for (const line of translatedLines) {
-                if (line.startsWith(`#${this.targetLanguage}:`)) {
-                  translatedText = line.substring(line.indexOf(':') + 1).trim();
-                  break;
+                
+                console.log('Erkannte Sprachen im übersetzten Text:', languageCodes);
+                
+                // Aktive Sprachen aktualisieren
+                this.activeLanguages = languageCodes;
+                
+                // Stelle sicher, dass jede aktive Sprache eine Stimme hat
+                for (const lang of this.activeLanguages) {
+                  if (!this.selectedVoices[lang] && this.voices[lang] && this.voices[lang].length > 0) {
+                    this.selectedVoices[lang] = this.voices[lang][0];
+                  }
                 }
+                
+                console.log('Übersetzung erfolgreich hinzugefügt!', {
+                  activeLanguages: this.activeLanguages,
+                  selectedVoices: this.selectedVoices
+                });
               }
-              newText += `#${this.targetLanguage}: ${translatedText}`;
-              this.scriptText = newText;
-              this.activeLanguages.push(this.targetLanguage);
-              this.$set(this.selectedVoices, this.targetLanguage, this.voices[this.targetLanguage][0]);
-              console.log('Übersetzung hinzugefügt!');
+              this.isLoading = false;
+            } else {
+              // Noch nicht fertig, erneute Abfrage nach kurzer Wartezeit
+              setTimeout(checkProgress, 500);
             }
+          } catch (error) {
+            this.errorMessage = `Fehler beim Prüfen des Worker-Status: ${error.message}`;
+            console.error(this.errorMessage, error);
             this.isLoading = false;
-          } else {
-            setTimeout(checkProgress, 500);
           }
         };
+        
         await checkProgress();
       } catch (error) {
-        console.error('Fehler beim Hinzufügen der Übersetzung:', error.message);
+        this.errorMessage = `Fehler beim Hinzufügen der Übersetzung: ${error.message}`;
+        console.error(this.errorMessage, error);
+        alert(this.errorMessage);
         this.isLoading = false;
       }
     },
     async generateVoiceover() {
       try {
+        this.errorMessage = '';
         if (!this.scriptText.trim()) {
-          console.error('Bitte gib einen Text ein.');
+          this.errorMessage = 'Bitte gib einen Text ein.';
+          alert(this.errorMessage);
           return;
         }
+        
         this.isLoading = true;
         const voicesToUse = { ...this.selectedVoices };
+        
+        // Stelle sicher, dass jede aktive Sprache eine Stimme hat
         for (const lang of this.activeLanguages) {
-          if (!voicesToUse[lang]) {
+          if (!voicesToUse[lang] && this.voices[lang] && this.voices[lang].length > 0) {
             voicesToUse[lang] = this.voices[lang][0];
           }
         }
+        
         console.log('Generiere Dateien mit Stimmen:', voicesToUse);
-        const response = await fetch('/api/make-files', {
+        
+        const response = await fetch(`${this.apiBaseUrl}/api/make-files`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -315,27 +454,90 @@ export default {
             origLang: this.originalLanguage
           })
         });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`HTTP-Fehler: ${response.status} - ${errorData.error || 'Unbekannter Fehler'}`);
+        }
+        
         const { workerId } = await response.json();
         console.log('Worker ID:', workerId);
+        
         const checkProgress = async () => {
-          const progressResponse = await fetch(`/api/worker/${workerId}`);
-          const workerStatus = await progressResponse.json();
-          if (workerStatus.status === 'completed') {
-            if (workerStatus.result.error) {
-              console.error('Fehler:', workerStatus.result.error);
-            } else if (workerStatus.result.download_file_name) {
-              this.downloadLink = `/api/download/${workerStatus.result.download_file_name}`;
-              console.log('Download-Link:', this.downloadLink);
+          try {
+            const progressUrl = `${this.apiBaseUrl}/api/worker/${workerId}`;
+            console.log('Prüfe Worker-Status:', progressUrl);
+            
+            const progressResponse = await fetch(progressUrl);
+            if (!progressResponse.ok) {
+              throw new Error(`HTTP-Fehler bei Worker-Status: ${progressResponse.status}`);
             }
+            
+            const workerStatus = await progressResponse.json();
+            console.log('Worker-Status:', workerStatus);
+            
+            if (workerStatus.status === 'completed') {
+              if (workerStatus.result && workerStatus.result.error) {
+                this.errorMessage = `Fehler: ${workerStatus.result.error}`;
+                console.error(this.errorMessage);
+                alert(this.errorMessage);
+              } else if (workerStatus.result && workerStatus.result.download_file_name) {
+                const downloadUrl = `${this.apiBaseUrl}/api/download/${workerStatus.result.download_file_name}`;
+                this.downloadLink = downloadUrl;
+                console.log('Download-Link:', this.downloadLink);
+                
+                // Automatischer Download
+                this.triggerAutomaticDownload(downloadUrl);
+              }
+              this.isLoading = false;
+            } else {
+              // Noch nicht fertig, erneute Abfrage nach kurzer Wartezeit
+              setTimeout(checkProgress, 500);
+            }
+          } catch (error) {
+            this.errorMessage = `Fehler beim Prüfen des Worker-Status: ${error.message}`;
+            console.error(this.errorMessage, error);
             this.isLoading = false;
-          } else {
-            setTimeout(checkProgress, 500);
           }
         };
+        
         await checkProgress();
       } catch (error) {
-        console.error('Fehler beim Generieren der Dateien:', error.message);
+        this.errorMessage = `Fehler beim Generieren der Dateien: ${error.message}`;
+        console.error(this.errorMessage, error);
+        alert(this.errorMessage);
         this.isLoading = false;
+      }
+    },
+    triggerAutomaticDownload(url) {
+      try {
+        console.log('Starte automatischen Download von:', url);
+        
+        // Erstelle ein unsichtbares a-Element zum Starten des Downloads
+        const downloadElement = document.createElement('a');
+        downloadElement.href = url;
+        downloadElement.download = 'voiceover_files.zip'; // Vorgeschlagener Dateiname
+        downloadElement.target = '_blank'; // Öffne in neuem Tab, falls inline-Download nicht funktioniert
+        downloadElement.rel = 'noopener noreferrer';
+        downloadElement.style.display = 'none';
+        
+        // Füge das Element zum DOM hinzu
+        document.body.appendChild(downloadElement);
+        
+        // Starte den Download
+        downloadElement.click();
+        
+        // Entferne das Element nach dem Klick
+        setTimeout(() => {
+          document.body.removeChild(downloadElement);
+        }, 1000);
+        
+        console.log('Automatischer Download gestartet');
+      } catch (error) {
+        this.errorMessage = `Fehler beim automatischen Download: ${error.message}`;
+        console.error(this.errorMessage, error);
+        // Falls der automatische Download fehlschlägt, zeige eine Nachricht an
+        alert('Automatischer Download konnte nicht gestartet werden. Bitte nutzen Sie den Download-Link.');
       }
     },
     clearForm() {
@@ -343,6 +545,7 @@ export default {
       this.activeLanguages = [this.originalLanguage];
       this.selectedVoices = { [this.originalLanguage]: this.voices[this.originalLanguage][0] };
       this.downloadLink = null;
+      this.errorMessage = '';
       console.log('Formular zurückgesetzt');
     }
   },
@@ -353,6 +556,7 @@ export default {
         this.selectedVoices = { [newLang]: this.voices[newLang][0] };
         this.scriptText = '';
         this.downloadLink = null;
+        this.errorMessage = '';
       }
     }
   }
@@ -363,44 +567,50 @@ export default {
 .voiceover-assistant {
   font-family: Arial, sans-serif;
   color: #333;
-  line-height: 1.5;
-  max-width: 100%;
-  height: 100%;
-  margin: 0 auto;
-  padding: 0.7rem 0.5rem;
+  line-height: 1.4;
+  width: 100%;
+  height: auto;
+  min-height: 100%;
+  margin: 0;
+  padding: 0.5rem;
   box-sizing: border-box;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 html, body {
   height: 100%;
-  overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 .container {
   background-color: #f9f9f9;
   border: 1px solid #e0e0e0;
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .header {
-  padding: 20px;
+  padding: 10px 15px;
 }
 
 h1 {
   color: #0e8a7d;
-  margin: 0 0 10px 0;
-  font-size: 24px;
+  margin: 0 0 5px 0;
+  font-size: clamp(18px, 3vw, 24px);
 }
 
 .description {
-  margin-bottom: 10px;
+  margin-bottom: 5px;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .features {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .main-content {
@@ -410,35 +620,39 @@ h1 {
 }
 
 .column {
-  padding: 20px;
+  padding: 10px 15px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .left-column {
   flex: 1;
-  min-width: 400px;
+  min-width: 300px;
 }
 
 .right-column {
   flex: 1;
-  min-width: 400px;
+  min-width: 300px;
   background-color: #f9f9f9;
 }
 
 h2 {
-  font-size: 18px;
+  font-size: clamp(16px, 2.5vw, 18px);
   margin-top: 0;
-  margin-bottom: 15px;
+  margin-bottom: 10px;
 }
 
 .input-group {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
 }
 
 .language-selection-row {
   display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
+  gap: 15px;
+  margin-bottom: 10px;
 }
 
 .language-selection-item {
@@ -448,6 +662,7 @@ h2 {
 label {
   display: block;
   margin-bottom: 5px;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .select-wrapper {
@@ -457,7 +672,7 @@ label {
 
 select {
   width: 100%;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border: 1px solid #ccc;
   background-color: white;
   appearance: none;
@@ -467,48 +682,55 @@ select {
   background-repeat: no-repeat;
   background-position: right 8px center;
   background-size: 16px;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 textarea {
   width: 100%;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border: 1px solid #ccc;
   resize: vertical;
   box-sizing: border-box;
+  min-height: 150px;
+  max-height: 40vh;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .add-language-btn {
   background-color: #0e8a7d;
   color: white;
   border: none;
-  padding: 8px 12px;
+  padding: 6px 10px;
   cursor: pointer;
   white-space: nowrap;
   display: block;
   margin-top: 5px;
   float: right;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .button-group {
   display: flex;
   gap: 10px;
-  margin-top: 20px;
+  margin-top: 10px;
 }
 
 .play-btn {
   background-color: #0e8a7d;
   color: white;
   border: none;
-  padding: 8px 12px;
+  padding: 6px 10px;
   cursor: pointer;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .clear-btn {
   background-color: #c00;
   color: white;
   border: none;
-  padding: 8px 12px;
+  padding: 6px 10px;
   cursor: pointer;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .voice-option {
@@ -519,28 +741,30 @@ textarea {
   background-color: #0e8a7d;
   color: white;
   border: none;
-  padding: 12px 20px;
+  padding: 8px 15px;
   cursor: pointer;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
   font-weight: bold;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .download-link {
   margin-top: 10px;
+  font-size: clamp(12px, 1.4vw, 14px);
 }
 
 .disclaimer {
-  margin-top: 20px;
-  font-size: 14px;
+  margin-top: 15px;
+  font-size: clamp(10px, 1.2vw, 12px);
 }
 
-.disclaimer ul {
+.disclaimer ul, .disclaimer ol {
   margin: 0;
   padding-left: 20px;
 }
 
 .disclaimer li {
-  margin-bottom: 5px;
+  margin-bottom: 3px;
 }
 
 .link {
@@ -552,6 +776,35 @@ textarea {
   text-decoration: underline;
 }
 
+.voice-selection {
+  flex: 0 1 auto;
+}
+
+.error-message {
+  background-color: #ffeeee;
+  border: 1px solid #ff6666;
+  color: #cc0000;
+  padding: 10px 15px;
+  margin: 10px 15px;
+  border-radius: 4px;
+  position: relative;
+  font-size: clamp(12px, 1.4vw, 14px);
+}
+
+.close-error {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  color: #cc0000;
+}
+
+.close-error:hover {
+  color: #ff0000;
+}
+
 @media (max-width: 900px) {
   .main-content {
     flex-direction: column;
@@ -559,6 +812,7 @@ textarea {
   
   .column {
     width: 100%;
+    min-width: 100%;
   }
   
   .language-selection-row {
@@ -568,6 +822,20 @@ textarea {
   
   .button-group {
     flex-direction: column;
+  }
+  
+  .header {
+    padding: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .voiceover-assistant {
+    padding: 0.3rem;
+  }
+  
+  .header, .column {
+    padding: 8px;
   }
 }
 </style>

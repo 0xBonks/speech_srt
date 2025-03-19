@@ -13,8 +13,16 @@ const { Translation } = require('./translation');
 const crypto = require('crypto');
 
 const app = express();
+const PORT = process.env.PORT || 5001;
 
-app.use(cors());
+// CORS configuration
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json({ limit: '50mb' }));
 
 // Serve static files
@@ -27,9 +35,9 @@ const appEnv = {
   pollyKeyId: process.env.POLLY_KEY_ID,
   pollySecretKey: process.env.POLLY_SECRET_KEY,
   pollyRegion: process.env.POLLY_REGION || 'eu-west-1',
-  translatorKey: process.env.TRANSLATOR_KEY,
-  translatorUrl: process.env.TRANSLATOR_URL,
-  ignoreTranslatorSslCert: IGNORE_TRANSLATOR_SSL_CERT=1
+  translatorKey: process.env.TRANSLATOR_API_KEY_FREE_DEEPL,
+  translatorUrl: process.env.TRANSLATOR_URL_FREE_DEEPL,
+  ignoreTranslatorSslCert: process.env.IGNORE_TRANSLATOR_SSL_CERT === '1'
 };
 
 // Ensure directories exist
@@ -260,6 +268,13 @@ app.post('/api/add-translation', async (req, res) => {
       return res.status(400).json({ error: 'Missing parameters' });
     }
 
+    console.log('Translation request:', { 
+      targetLang, 
+      origLang, 
+      textLength: text.length,
+      textStart: text.substring(0, 50) + (text.length > 50 ? '...' : '')
+    });
+
     const workerId = uuidv4();
     workers[workerId] = {
       status: 'started',
@@ -277,52 +292,81 @@ app.post('/api/add-translation', async (req, res) => {
         );
 
         // Split text into lines and prepare for translation
-        let lines = text.split('\n');
         let translatedText = '';
         let originalText = '';
 
         // If text already contains translations (has ---)
         if (text.includes('---')) {
+          console.log('Text already contains translations');
           const parts = text.split('---');
-          lines = parts[1].trim().split('\n');
-          translatedText = '---\n';
+          if (parts.length >= 2) {
+            const lines = parts[1].trim().split('\n');
+            translatedText = '---\n';
+            
+            // Sammle alle vorhandenen Übersetzungen
+            const existingTranslations = new Map();
+            
+            for (const line of lines) {
+              const match = line.match(/^#([A-Z]{2}): (.*)/);
+              if (match) {
+                const langCode = match[1];
+                const langText = match[2].trim();
+                existingTranslations.set(langCode, langText);
+                
+                // Wenn es die Originalsprache ist, merken wir uns den Text
+                if (langCode === origLang) {
+                  originalText = langText;
+                }
+              }
+            }
+            
+            console.log('Existing translations:', Array.from(existingTranslations.keys()));
+            
+            // Füge alle bestehenden Übersetzungen hinzu (außer der neuen Zielsprache)
+            for (const [langCode, langText] of existingTranslations.entries()) {
+              if (langCode !== targetLang) {
+                translatedText += `#${langCode}: ${langText}\n`;
+              }
+            }
+          } else {
+            console.error('Invalid text format - missing content after ---');
+            throw new Error('Invalid text format');
+          }
         } else {
           // This is the first translation, use the input text as original
+          console.log('First translation, using input as original');
           originalText = text;
           translatedText = '---\n';
           translatedText += `#${origLang}: ${originalText}\n`;
         }
 
-        // Add existing translations
-        for (const line of lines) {
-          if (line.startsWith('#') && !line.startsWith(`#${targetLang}:`)) {
-            translatedText += line + '\n';
-          }
+        // Ensure we have a text to translate
+        if (!originalText) {
+          console.error('No original text found for language', origLang);
+          throw new Error(`No text found for source language ${origLang}`);
         }
 
-        // Get the text to translate
-        let textToTranslate = '';
-        if (text.includes('---')) {
-          // Find original language text
-          const origLine = lines.find(l => l.startsWith(`#${origLang}:`));
-          if (origLine) {
-            textToTranslate = origLine.substring(origLine.indexOf(':') + 1).trim();
-          }
-        } else {
-          textToTranslate = originalText;
-        }
+        console.log('Text to translate:', { 
+          originalText: originalText.substring(0, 50) + (originalText.length > 50 ? '...' : ''),
+          fromLang: origLang,
+          toLang: targetLang
+        });
 
         // Perform the translation
         workers[workerId].stage = 'Translating';
         workers[workerId].progress = 50;
         
-        const translatedLine = await translator.translateText(textToTranslate, targetLang, origLang);
+        const translatedLine = await translator.translateText(originalText, targetLang, origLang);
         translatedText += `#${targetLang}: ${translatedLine}`;
 
         workers[workerId].progress = 100;
         workers[workerId].stage = 'Translation completed';
         workers[workerId].status = 'completed';
         workers[workerId].result = { text: translatedText };
+        
+        console.log('Translation completed, result contains', 
+          translatedText.split('\n').filter(line => line.match(/^#[A-Z]{2}:/)).length, 
+          'languages');
       } catch (error) {
         console.error('Translation error:', error);
         workers[workerId].status = 'completed';
@@ -346,6 +390,12 @@ app.post('/api/make-files', async (req, res) => {
       return res.status(400).json({ error: 'No text provided' });
     }
     
+    console.log('Make files request:', { 
+      textStart: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
+      voices: Object.keys(voices),
+      origLang
+    });
+    
     const workerId = uuidv4();
     
     workers[workerId] = {
@@ -363,36 +413,67 @@ app.post('/api/make-files', async (req, res) => {
           region: appEnv.pollyRegion
         });
         
-        const translations = {};
+        // Füge alle Stimmen zum Synthesizer hinzu
         const langs = Object.keys(voices);
-        
         for (const lang of langs) {
           mp3SrtSynth.addLang(voices[lang], lang);
-          
-          const langPrefix = `#${lang}:`;
-          const lines = text.split('\n');
-          const langLines = [];
-          
-          for (const line of lines) {
-            if (lang === origLang && !line.startsWith('#')) {
-              langLines.push(line);
-            } else if (line.startsWith(langPrefix)) {
-              langLines.push(line.substring(langPrefix.length).trim());
-            }
-          }
-          
-          translations[lang] = langLines.join('\n');
+          console.log(`Added synthesizer for ${lang}: ${voices[lang]}`);
         }
         
+        // Extrahiere die Übersetzungen aus dem Text
+        const translations = {};
+        
+        // Prüfe, ob der Text das Format mit --- hat
+        if (text.includes('---')) {
+          const parts = text.split('---');
+          if (parts.length >= 2) {
+            const contentPart = parts[1].trim();
+            const lines = contentPart.split('\n');
+            
+            // Sammle alle Sprachübersetzungen
+            for (const lang of langs) {
+              const langPrefix = `#${lang}:`;
+              const langLines = [];
+              
+              for (const line of lines) {
+                if (line.startsWith(langPrefix)) {
+                  const translatedText = line.substring(langPrefix.length).trim();
+                  langLines.push(translatedText);
+                }
+              }
+              
+              if (langLines.length > 0) {
+                translations[lang] = langLines.join('\n');
+                console.log(`Found translation for ${lang}, length: ${translations[lang].length} chars`);
+              } else {
+                console.warn(`No translation found for language ${lang}`);
+              }
+            }
+          }
+        } else {
+          // Fallback: Nimm den ganzen Text für die Originalsprache
+          translations[origLang] = text;
+          console.log(`Using entire text for original language ${origLang}`);
+        }
+        
+        // Prüfe, ob Übersetzungen gefunden wurden
+        if (Object.keys(translations).length === 0) {
+          throw new Error('No translations found in the provided text');
+        }
+        
+        console.log(`Processing ${Object.keys(translations).length} translations: ${Object.keys(translations).join(', ')}`);
+        
+        // Erstelle Dateipfade für MP3 und SRT
         const uid = uuidv4();
         const mp3FilePaths = {};
         const srtFilePaths = {};
         
-        for (const lang of langs) {
+        for (const lang in translations) {
           mp3FilePaths[lang] = path.join(appEnv.tempFileFolder, `${uid}_${lang}.mp3`);
           srtFilePaths[lang] = path.join(appEnv.tempFileFolder, `${uid}_${lang}.srt`);
         }
         
+        // Generiere Audio und SRT-Dateien
         await mp3SrtSynth.synthesizeAllLangs(
           translations,
           mp3FilePaths,
@@ -403,6 +484,7 @@ app.post('/api/make-files', async (req, res) => {
           }
         );
         
+        // Erstelle ZIP-Datei
         const zipFileName = `${uid}.zip`;
         const zipFilePath = path.join(appEnv.tempFileFolder, zipFileName);
         
@@ -414,6 +496,7 @@ app.post('/api/make-files', async (req, res) => {
         
         await utils.createZipFile(zipFilePath, filesToZip, zippedFileNames);
         
+        // Lösche temporäre Dateien
         for (const filePath of filesToZip) {
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
@@ -492,9 +575,9 @@ function checkFolderAccess(folderPath) {
   }
 }
 
-const PORT = process.env.PORT || 5000;
+// Start the server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
 
 module.exports = app; 
