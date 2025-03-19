@@ -2,11 +2,11 @@
   <div>
     <ifx-navbar show-logo-and-appname="false" application-name="Voiceover Assistant" fixed="false" logo-href="/" logo-href-target="_self">
     <ifx-navbar-item slot="left-item">
-      <router-link to="/contacts" class="nav-link">Contacts</router-link>
+      <router-link to="/product-overview" class="nav-link">Product Overview</router-link>
     </ifx-navbar-item>
 
     <ifx-navbar-item slot="left-item">
-      <router-link to="/product-overview" class="nav-link">Product Overview</router-link>
+      <router-link to="/contacts" class="nav-link">Contacts</router-link>
     </ifx-navbar-item>
 
     <ifx-navbar-item slot="left-item">
