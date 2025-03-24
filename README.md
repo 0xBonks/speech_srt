@@ -1,50 +1,87 @@
-## Installation
+# Speech SRT Docker Setup
 
-1. Stelle sicher, dass Node.js auf deinem System installiert ist
-2. Klone das Repository
-3. Installiere alle Abhängigkeiten:
-```bash
-npm run install:all
-```
+Dieses Repository enthält die notwendigen Dateien, um die Speech SRT Anwendung in Docker zu deployen.
+
+## Voraussetzungen
+
+- Docker und Docker Compose installiert
+- AWS Polly Zugangsdaten (für die Sprachsynthese)
+- DeepL API Zugangsdaten (für die Übersetzung)
 
 ## Konfiguration
 
-1. Erstelle eine `.env` Datei im Root-Verzeichnis mit folgenden Variablen:
+1. Erstelle eine `.env` Datei im Root-Verzeichnis mit folgenden Umgebungsvariablen:
+
 ```
 TEMP_FILE_FOLDER=output
 TEMP_PLAY_FOLDER=static/temp
-POLLY_KEY_ID=dein_aws_polly_key
-POLLY_SECRET_KEY=dein_aws_polly_secret
-POLLY_REGION=deine_aws_region
-TRANSLATOR_URL=deine_translator_url
-TRANSLATOR_KEY=dein_translator_key
-IGNORE_TRANSLATOR_SSL_CERT=1
+POLLY_KEY_ID=dein_aws_access_key_id
+POLLY_SECRET_KEY=dein_aws_secret_access_key
+POLLY_REGION=eu-west-1
+TRANSLATOR_API_KEY_FREE_DEEPL=dein_deepl_api_key
+TRANSLATOR_URL_FREE_DEEPL=https://api-free.deepl.com/v2/translate
+IGNORE_TRANSLATOR_SSL_CERT=0
 BACKEND_API_URL=http://localhost:5001
 ```
 
-## Ausführung
+## Deployment
 
-### Entwicklung (Frontend + Backend)
-```bash
-npm run dev
-```
-Dies startet:
-- Backend auf http://localhost:5001
-- Frontend Development Server
+### Mit Docker Compose (empfohlen)
 
-### Nur Backend
+1. Stelle sicher, dass du im Root-Verzeichnis des Projekts bist
+2. Führe folgenden Befehl aus:
+
 ```bash
-npm run dev:backend
+docker-compose up -d
 ```
 
-### Nur Frontend
+Die Anwendung ist dann unter http://localhost:5001 erreichbar.
+
+### Manuelles Docker-Build
+
+1. Image bauen:
+
 ```bash
-npm run dev:frontend
+docker build -t speech-srt .
 ```
 
-### Produktion
+2. Container starten:
+
 ```bash
-npm start
+docker run -d -p 5001:5001 \
+  -e POLLY_KEY_ID=dein_aws_access_key_id \
+  -e POLLY_SECRET_KEY=dein_aws_secret_access_key \
+  -e POLLY_REGION=eu-west-1 \
+  -e TRANSLATOR_API_KEY_FREE_DEEPL=dein_deepl_api_key \
+  -e TRANSLATOR_URL_FREE_DEEPL=https://api-free.deepl.com/v2/translate \
+  --name speech-srt speech-srt
+```
+
+## Datenvolumes
+
+Die Anwendung verwendet zwei Docker-Volumes:
+
+- `speech_srt_output`: Für die generierten Dateien (MP3, SRT, ZIP)
+- `speech_srt_temp`: Für temporäre Dateien
+
+## Wartung
+
+- Logs anzeigen:
+
+```bash
+docker logs speech-srt
+```
+
+- Container neu starten:
+
+```bash
+docker restart speech-srt
+```
+
+- Container und Volumes löschen:
+
+```bash
+docker-compose down -v
 ```
 
 ## Features

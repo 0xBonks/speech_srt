@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  speech-srt-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: speech-srt
+    ports:
+      - "5001:5001"
+    volumes:
+      - speech_srt_output:/app/output
+      - speech_srt_temp:/app/static/temp
+    environment:
+      - PORT=5001
+      - POLLY_KEY_ID=${POLLY_KEY_ID}
+      - POLLY_SECRET_KEY=${POLLY_SECRET_KEY}
+      - POLLY_REGION=${POLLY_REGION:-eu-west-1}
+      - TRANSLATOR_API_KEY_FREE_DEEPL=${TRANSLATOR_API_KEY_FREE_DEEPL}
+      - TRANSLATOR_URL_FREE_DEEPL=${TRANSLATOR_URL_FREE_DEEPL}
+      - IGNORE_TRANSLATOR_SSL_CERT=${IGNORE_TRANSLATOR_SSL_CERT:-0}
+    restart: unless-stopped
+
+volumes:
+  speech_srt_output:
+  speech_srt_temp: 

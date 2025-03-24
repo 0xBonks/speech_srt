@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speech-srt
+  labels:
+    app: speech-srt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: speech-srt
+  template:
+    metadata:
+      labels:
+        app: speech-srt
+    spec:
+      containers:
+      - name: speech-srt
+        image: ${IMAGE_REGISTRY}/${OPENSHIFT_NAMESPACE}/speech-srt:latest
+        ports:
+        - containerPort: 5001
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        env:
+        - name: PORT
+          value: "5001"
+        - name: TEMP_FILE_FOLDER
+          value: "/app/output"
+        - name: TEMP_PLAY_FOLDER
+          value: "/app/static/temp"
+        - name: NODE_ENV
+          value: "production"
+        envFrom:
+        - secretRef:
+            name: speech-srt-secrets
+        volumeMounts:
+        - name: output-volume
+          mountPath: /app/output
+        - name: temp-volume
+          mountPath: /app/static/temp
+      volumes:
+      - name: output-volume
+        persistentVolumeClaim:
+          claimName: speech-srt-output-pvc
+      - name: temp-volume
+        persistentVolumeClaim:
+          claimName: speech-srt-temp-pvc 
