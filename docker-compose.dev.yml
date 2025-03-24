@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  speech-srt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: speech-srt
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./output:/app/output
+      - ./static/temp:/app/static/temp
+    env_file:
+      - frontend/.env
+    environment:
+      - PORT=5001
+      - TEMP_FILE_FOLDER=/app/output
+      - TEMP_PLAY_FOLDER=/app/static/temp
+      - NODE_ENV=development
+    restart: unless-stopped 

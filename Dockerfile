@@ -1,51 +1,47 @@
-FROM node:18-alpine
-
-# Arbeitsverzeichnis setzen
-WORKDIR /app
-
-# Abhängigkeiten für die Anwendung installieren
-RUN apk add --no-cache python3 make g++ zip
-
-# Kopiere package.json Dateien zuerst, um Abhängigkeiten zu cachen
-COPY frontend/package*.json ./frontend/
-COPY server/*.js ./server/
-
-# Installiere Abhängigkeiten für Frontend
+# Build stage for frontend
+FROM node:20-alpine as frontend-build
 WORKDIR /app/frontend
+COPY frontend/package*.json ./
 RUN npm install
-
-# Baue Frontend
+COPY frontend/ .
 RUN npm run build
 
-# Zurück zum Hauptverzeichnis
+# Build stage for backend
+FROM node:20-alpine as backend-build
+WORKDIR /app/server
+COPY server/package*.json ./
+RUN npm install
+COPY server/ .
+
+# Final stage
+FROM node:20-alpine
 WORKDIR /app
 
-# Installiere Abhängigkeiten für Backend
-RUN cd server && npm install --only=production
+# Copy built frontend
+COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
+COPY --from=frontend-build /app/frontend/package*.json /app/frontend/
 
-# Kopiere den Rest der Anwendung
-COPY frontend/src ./frontend/src
-COPY frontend/public ./frontend/public
-COPY frontend/index.html ./frontend/
-COPY frontend/vite.config.js ./frontend/
-COPY static ./static
+# Copy backend
+COPY --from=backend-build /app/server /app/server
 
-# Erstelle notwendige Verzeichnisse
-RUN mkdir -p static/temp
-RUN mkdir -p output
+# Copy static files
+COPY static /app/static
 
-# Umgebungsvariablen setzen
+# Install production dependencies
+WORKDIR /app/server
+RUN npm install --production
+
+# Set environment variables
 ENV PORT=5001
-ENV TEMP_FILE_FOLDER=output
-ENV TEMP_PLAY_FOLDER=static/temp
+ENV TEMP_FILE_FOLDER=/app/output
+ENV TEMP_PLAY_FOLDER=/app/static/temp
 ENV NODE_ENV=production
 
-# Exponiere den Port
+# Create necessary directories
+RUN mkdir -p /app/output /app/static/temp
+
+# Expose port
 EXPOSE 5001
 
-# Startskript hinzufügen
-COPY docker-entrypoint.sh /
-RUN chmod +x /docker-entrypoint.sh
-
-# Starte die Anwendung
-ENTRYPOINT ["/docker-entrypoint.sh"] 
+# Start the server
+CMD ["node", "server.js"] 
