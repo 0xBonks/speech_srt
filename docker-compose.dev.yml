@@ -1,11 +1,28 @@
 version: '3.8'
 
 services:
-  speech-srt:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: speech-srt-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file:
+      - frontend/.env
+    environment:
+      - NODE_ENV=development
+      - VITE_BACKEND_API_URL=http://localhost:5001
+    restart: unless-stopped
+
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: speech-srt
+    container_name: speech-srt-backend
     ports:
       - "5001:5001"
     volumes:
@@ -18,4 +35,10 @@ services:
       - TEMP_FILE_FOLDER=/app/output
       - TEMP_PLAY_FOLDER=/app/static/temp
       - NODE_ENV=development
+      - POLLY_KEY_ID=${POLLY_KEY_ID}
+      - POLLY_SECRET_KEY=${POLLY_SECRET_KEY}
+      - POLLY_REGION=${POLLY_REGION:-eu-west-1}
+      - TRANSLATOR_API_KEY_FREE_DEEPL=${TRANSLATOR_API_KEY_FREE_DEEPL}
+      - TRANSLATOR_URL_FREE_DEEPL=${TRANSLATOR_URL_FREE_DEEPL}
+      - IGNORE_TRANSLATOR_SSL_CERT=${IGNORE_TRANSLATOR_SSL_CERT:-0}
     restart: unless-stopped 
