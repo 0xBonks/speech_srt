@@ -1,15 +1,17 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: speech-srt
+  name: text2speech-git
+  namespace: t2s
   labels:
-    app: speech-srt
+    app: text2speech-git
+    app.kubernetes.io/part-of: text2speech
 spec:
   port:
     targetPort: web
   to:
     kind: Service
-    name: speech-srt
+    name: text2speech-git
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect 

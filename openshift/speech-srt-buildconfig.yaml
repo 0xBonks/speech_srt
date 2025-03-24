@@ -1,0 +1,57 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: text2speech-git
+  namespace: t2s
+  annotations:
+    app.openshift.io/vcs-ref: ''
+    app.openshift.io/vcs-uri: 'https://gitlab.intra.infineon.com/bauersachs/speech_srt.git'
+    openshift.io/generated-by: OpenShiftWebConsole
+  labels:
+    app: text2speech-git
+    app.kubernetes.io/component: text2speech-git
+    app.kubernetes.io/instance: text2speech-git
+    app.kubernetes.io/name: text2speech-git
+    app.kubernetes.io/part-of: text2speech
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'text2speech-git:latest'
+  resources: {}
+  successfulBuildsHistoryLimit: 5
+  failedBuildsHistoryLimit: 5
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  postCommit: {}
+  source:
+    type: Git
+    git:
+      uri: 'https://gitlab.intra.infineon.com/bauersachs/speech_srt.git'
+    contextDir: /
+    sourceSecret:
+      name: hicp
+  triggers:
+    - type: Generic
+      generic:
+        secretReference:
+          name: text2speech-git-generic-webhook-secret
+    - type: GitLab
+      gitlab:
+        secretReference:
+          name: text2speech-git-gitlab-webhook-secret
+    - type: ImageChange
+      imageChange: {}
+    - type: ConfigChange
+  runPolicy: Serial
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: text2speech-git
+  namespace: t2s
+  labels:
+    app: text2speech-git
+    app.kubernetes.io/part-of: text2speech 
