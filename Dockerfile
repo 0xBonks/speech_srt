@@ -1,47 +1,45 @@
-# Build stage for frontend
-FROM node:20-alpine as frontend-build
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm install
-COPY frontend/ .
-RUN npm run build
+# Use the base image from OpenShift
+FROM registry.intra.infineon.com/openshift/ifx-base-ruby:3.1
 
-# Build stage for backend
-FROM node:20-alpine as backend-build
-WORKDIR /app/server
-COPY server/package*.json ./
-RUN npm install
-COPY server/ .
-
-# Final stage
-FROM node:20-alpine
+# Set working directory
 WORKDIR /app
 
-# Copy built frontend
-COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
-COPY --from=frontend-build /app/frontend/package*.json /app/frontend/
+# Install Node.js and npm
+RUN apt-get update && \
+    apt-get install -y curl gnupg && \
+    curl -sL https://deb.nodesource.com/setup_16.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy backend
-COPY --from=backend-build /app/server /app/server
+# Copy source code
+COPY . .
 
-# Copy static files
-COPY static /app/static
+# Build frontend
+WORKDIR /app/frontend
+RUN npm install && npm run build
 
-# Install production dependencies
+# Install backend dependencies
 WORKDIR /app/server
 RUN npm install --production
 
-# Set environment variables
-ENV PORT=5001
-ENV TEMP_FILE_FOLDER=/app/output
-ENV TEMP_PLAY_FOLDER=/app/static/temp
-ENV NODE_ENV=production
-
 # Create necessary directories
+WORKDIR /app
 RUN mkdir -p /app/output /app/static/temp
+
+# Set environment variables (these will be overridden by OpenShift)
+ENV PORT=5001 \
+    TEMP_FILE_FOLDER=/app/output \
+    TEMP_PLAY_FOLDER=/app/static/temp \
+    NODE_ENV=production
+
+# Set permissions for OpenShift
+RUN chgrp -R 0 /app && \
+    chmod -R g=u /app
 
 # Expose port
 EXPOSE 5001
 
 # Start the server
-CMD ["node", "server.js"] 
+CMD ["node", "/app/server/server.js"] 

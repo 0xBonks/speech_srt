@@ -1,0 +1,65 @@
+# Use the base image from OpenShift
+FROM registry.intra.infineon.com/openshift/ifx-base-ruby:3.1
+
+# Set working directory
+WORKDIR /app
+
+# Use Ruby to set up environment (no external Node.js image needed)
+# Check if Node.js is already installed in the base image
+RUN if ! command -v node &> /dev/null; then \
+    # Install Node.js using the package manager in the base image
+    apt-get update && \
+    apt-get install -y curl && \
+    curl -sL https://deb.nodesource.com/setup_16.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Install npm if not present
+RUN if ! command -v npm &> /dev/null; then \
+    apt-get update && \
+    apt-get install -y npm && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Copy package files first for better caching
+COPY frontend/package*.json ./frontend/
+COPY server/package*.json ./server/
+
+# Install frontend dependencies
+WORKDIR /app/frontend
+RUN npm install
+
+# Build frontend
+COPY frontend/ ./
+RUN npm run build
+
+# Install backend dependencies
+WORKDIR /app/server
+RUN npm install --production
+COPY server/ ./
+
+# Copy static files
+WORKDIR /app
+COPY static /app/static
+
+# Create necessary directories
+RUN mkdir -p /app/output /app/static/temp
+
+# Set environment variables (these will be overridden by OpenShift secrets)
+ENV PORT=5001
+ENV TEMP_FILE_FOLDER=/app/output
+ENV TEMP_PLAY_FOLDER=/app/static/temp
+ENV NODE_ENV=production
+
+# Set permissions for OpenShift
+RUN chgrp -R 0 /app && \
+    chmod -R g=u /app
+
+# Expose port
+EXPOSE 5001
+
+# Start the server
+CMD ["node", "/app/server/server.js"] 
