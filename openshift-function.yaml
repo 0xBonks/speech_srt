@@ -1,0 +1,74 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: speech-srt
+  namespace: t2s
+  labels:
+    app: speech-srt
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+    spec:
+      containers:
+        - image: image-registry.openshift-image-registry.svc:5000/t2s/speech-srt:latest
+          env:
+            - name: PORT
+              value: "8080"
+            - name: TEMP_FILE_FOLDER
+              value: /app/output
+            - name: TEMP_PLAY_FOLDER
+              value: /app/static/temp
+            - name: NODE_ENV
+              value: production
+            - name: POLLY_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: polly-key-id
+                  key: polly_key_id
+            - name: POLLY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: polly-secret-key
+                  key: polly_secret_key
+            - name: POLLY_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: polly-region
+                  key: polly_region
+            - name: TRANSLATOR_API_KEY_FREE_DEEPL
+              valueFrom:
+                secretKeyRef:
+                  name: translator-key-free-deepl
+                  key: translator_key_free_deepl
+            - name: TRANSLATOR_URL_FREE_DEEPL
+              valueFrom:
+                secretKeyRef:
+                  name: translator-url-free-deepl
+                  key: translator_url_free_deepl
+            - name: IGNORE_TRANSLATOR_SSL_CERT
+              valueFrom:
+                secretKeyRef:
+                  name: ignore-translator-ssl-cert
+                  key: ignore_translator_ssl_cert
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          volumeMounts:
+            - name: output-volume
+              mountPath: /app/output
+            - name: temp-volume
+              mountPath: /app/static/temp
+      volumes:
+        - name: output-volume
+          persistentVolumeClaim:
+            claimName: speech-srt-output
+        - name: temp-volume
+          persistentVolumeClaim:
+            claimName: speech-srt-temp 
