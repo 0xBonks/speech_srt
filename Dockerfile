@@ -9,30 +9,31 @@ RUN apt-get update && \
     apt-get install -y curl gnupg && \
     curl -sL https://deb.nodesource.com/setup_16.x | bash - && \
     apt-get install -y nodejs && \
-    npm install -g npm@latest && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Copy package.json files
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+COPY server/package*.json ./server/
+
+# Install dependencies
+RUN npm install
 
 # Copy source code
 COPY . .
 
-# Build frontend
-WORKDIR /app/frontend
-RUN npm install && npm run build
-
-# Install backend dependencies
-WORKDIR /app/server
-RUN npm install --production
-
-# Create necessary directories
-WORKDIR /app
+# Make sure all necessary directories exist
 RUN mkdir -p /app/output /app/static/temp
 
-# Set environment variables (these will be overridden by OpenShift)
-ENV PORT=5001 \
+# Build the app
+RUN npm run build
+
+# Set environment variables for production
+ENV NODE_ENV=production \
+    PORT=5001 \
     TEMP_FILE_FOLDER=/app/output \
-    TEMP_PLAY_FOLDER=/app/static/temp \
-    NODE_ENV=production
+    TEMP_PLAY_FOLDER=/app/static/temp
 
 # Set permissions for OpenShift
 RUN chgrp -R 0 /app && \
@@ -42,4 +43,4 @@ RUN chgrp -R 0 /app && \
 EXPOSE 5001
 
 # Start the server
-CMD ["node", "/app/server/server.js"] 
+CMD ["npm", "run", "start"] 
