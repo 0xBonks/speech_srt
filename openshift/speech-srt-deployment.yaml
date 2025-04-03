@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: text2speech-git
+  namespace: t2s
+  labels:
+    app: text2speech-git
+    app.kubernetes.io/part-of: text2speech
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: text2speech-git
+  template:
+    metadata:
+      labels:
+        app: text2speech-git
+    spec:
+      containers:
+      - name: text2speech-git
+        image: image-registry.openshift-image-registry.svc:5000/t2s/text2speech-git:latest
+        ports:
+        - containerPort: 5001
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        env:
+        - name: PORT
+          value: "5001"
+        - name: TEMP_FILE_FOLDER
+          value: "/app/output"
+        - name: TEMP_PLAY_FOLDER
+          value: "/app/static/temp"
+        - name: NODE_ENV
+          value: "production"
+        envFrom:
+        - secretRef:
+            name: polly-engine
+        - secretRef:
+            name: deepl-translator
+        volumeMounts:
+        - name: temp-volume
+          mountPath: /app
+      volumes:
+      - name: temp-volume
+        persistentVolumeClaim:
+          claimName: temp 

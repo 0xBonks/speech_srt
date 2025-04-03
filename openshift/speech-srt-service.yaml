@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: text2speech-git
+  namespace: t2s
+  labels:
+    app: text2speech-git
+    app.kubernetes.io/part-of: text2speech
+spec:
+  ports:
+  - port: 5001
+    targetPort: 5001
+    name: web
+  selector:
+    app: text2speech-git 

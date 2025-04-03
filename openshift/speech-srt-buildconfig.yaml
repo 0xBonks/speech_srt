@@ -1,0 +1,84 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: speech-srt
+  namespace: t2s
+  annotations:
+    app.openshift.io/vcs-ref: ''
+    app.openshift.io/vcs-uri: 'https://gitlab.intra.infineon.com/bauersachs/speech_srt.git'
+    openshift.io/generated-by: OpenShiftWebConsole
+  labels:
+    app: speech-srt
+    app.kubernetes.io/component: speech-srt
+    app.kubernetes.io/instance: speech-srt
+    app.kubernetes.io/name: speech-srt
+    app.kubernetes.io/part-of: text2speech
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: speech-srt:latest
+  resources: {}
+  successfulBuildsHistoryLimit: 5
+  failedBuildsHistoryLimit: 5
+  strategy:
+    type: Source
+    sourceStrategy:
+      from:
+        kind: ImageStreamTag
+        namespace: openshift
+        name: 'ifx-base-nodejs:22'
+      env:
+        - name: IGNORE_TRANSLATOR_SSL_CERT
+          valueFrom:
+            secretKeyRef:
+              name: ignore-translator-ssl-cert
+              key: ignore_translator_ssl_cert
+        - name: POLLY_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: polly-key-id
+              key: polly_key_id
+        - name: POLLY_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: polly-secret-key
+              key: polly_secret_key
+        - name: POLLY_REGION
+          valueFrom:
+            secretKeyRef:
+              name: polly-region
+              key: polly_region
+        - name: TRANSLATOR_URL_FREE_DEEPL
+          valueFrom:
+            secretKeyRef:
+              name: translator-url-free-deepl
+              key: translator_url_free_deepl
+        - name: TRANSLATOR_API_KEY_FREE_DEEPL
+          valueFrom:
+            secretKeyRef:
+              name: translator-key-free-deepl
+              key: translator_key_free_deepl
+  postCommit: {}
+  source:
+    type: Git
+    git:
+      uri: 'https://gitlab.intra.infineon.com/bauersachs/speech_srt.git'
+      ref: design-guidelines
+    contextDir: ''
+    sourceSecret:
+      name: gitlab
+  triggers:
+    - type: ConfigChange
+    - type: ImageChange
+      imageChange: {}
+  runPolicy: Serial
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: text2speech-git
+  namespace: t2s
+  labels:
+    app: text2speech-git
+    app.kubernetes.io/part-of: text2speech 

@@ -1,0 +1,26 @@
+# Node Modules und Temp-Dateien ignorieren
+node_modules/
+npm-debug.log
+.DS_Store
+.git
+.gitignore
+*.md
+*.mp3
+*.zip
+*.srt
+
+# Umgebungsvariablen ignorieren
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+
+# Temp-Verzeichnisse
+**/temp/
+**/output/
+
+# Docker-Dateien ignorieren
+Dockerfile
+docker-compose.yml
+.dockerignore 

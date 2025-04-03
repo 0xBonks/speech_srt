@@ -1,0 +1,49 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: speech-srt-build-template
+  annotations:
+    description: "Template zum Erstellen des Speech SRT Image"
+    tags: "speech-srt,node"
+objects:
+- apiVersion: build.openshift.io/v1
+  kind: BuildConfig
+  metadata:
+    name: speech-srt
+    labels:
+      app: speech-srt
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: speech-srt:latest
+    source:
+      git:
+        uri: ${GIT_REPOSITORY_URL}
+        ref: ${GIT_REFERENCE}
+      contextDir: ${CONTEXT_DIR}
+    strategy:
+      dockerStrategy:
+        dockerfilePath: ${DOCKERFILE_PATH}
+    triggers:
+    - type: ConfigChange
+    - type: ImageChange
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    name: speech-srt
+    labels:
+      app: speech-srt
+parameters:
+- name: GIT_REPOSITORY_URL
+  description: "Git Repository URL"
+  required: true
+- name: GIT_REFERENCE
+  description: "Git Branch/Tag/Commit-Referenz"
+  value: "main"
+- name: CONTEXT_DIR
+  description: "Kontext-Verzeichnis im Repository"
+  value: "."
+- name: DOCKERFILE_PATH
+  description: "Pfad zur Dockerfile im Repository"
+  value: "Dockerfile" 
