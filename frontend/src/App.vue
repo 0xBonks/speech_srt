@@ -36,7 +36,7 @@
             </p>
           </div>
           <div class="white-container">
-            <div style="flex: 1; overflow-y: auto;">
+            <div style="flex: 1; overflow: hidden;">
               <router-view></router-view>
             </div>
             <div class="navigation-buttons">
@@ -211,8 +211,7 @@ const navigateToNext = async () => {
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   height: 450px;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  overflow: hidden;
 }
 
 .section-title {
@@ -230,8 +229,15 @@ const navigateToNext = async () => {
   line-height: 1.5;
 }
 
-.disclaimer-container ol, .disclaimer-container ul {
-  margin-left: 20px;
+.disclaimer-container ol {
+  margin-left: 0;
+  padding-left: 17px;
+  margin-bottom: 15px;
+}
+
+.disclaimer-container ul {
+  margin-left: 0;
+  padding-left: 20px;
   margin-bottom: 15px;
 }
 
@@ -265,7 +271,7 @@ const navigateToNext = async () => {
 
 .white-container > *:first-child {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .navigation-buttons {
