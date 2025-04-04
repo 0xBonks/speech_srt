@@ -271,6 +271,57 @@ app.post('/api/play-line', async (req, res) => {
   }
 });
 
+// Test Voice
+app.post('/api/test-voice', async (req, res) => {
+  try {
+    const { text, voice, language } = req.body;
+    
+    if (!text || !voice || !language) {
+      return res.status(400).json({ error: 'Missing parameters: text, voice, or language' });
+    }
+    
+    console.log('Test voice request:', { text, voice, language });
+    
+    const mp3SrtSynth = new Mp3SrtSynth({
+      accessKeyId: appEnv.pollyKeyId,
+      secretAccessKey: appEnv.pollySecretKey,
+      region: appEnv.pollyRegion
+    });
+    
+    mp3SrtSynth.addLang(voice, language);
+    
+    // Generiere einen eindeutigen Dateinamen basierend auf Text und Stimme
+    const hash = crypto.createHash('sha256').update(text + voice + language).digest('hex');
+    const tempFilePath = path.join(appEnv.tempPlayFolder, `${hash}.mp3`);
+    
+    if (!fs.existsSync(tempFilePath)) {
+      console.log('Creating new test voice MP3 file...');
+      await mp3SrtSynth.synthOnePhraseMp3ToFile(`<s>${text}</s>`, tempFilePath, language);
+      
+      // Überprüfe, ob die Datei erstellt wurde und Inhalt hat
+      if (fs.existsSync(tempFilePath)) {
+        const stats = fs.statSync(tempFilePath);
+        console.log('Generated test voice MP3 file size:', stats.size, 'bytes');
+        if (stats.size === 0) {
+          throw new Error('Generated test voice MP3 file is empty');
+        }
+      } else {
+        throw new Error('Test voice MP3 file was not created');
+      }
+    } else {
+      console.log('Using existing test voice MP3 file');
+      const stats = fs.statSync(tempFilePath);
+      console.log('Existing test voice MP3 file size:', stats.size, 'bytes');
+    }
+    
+    // Sende den Dateinamen zurück
+    res.json({ file_name_mp3: path.basename(tempFilePath) });
+  } catch (error) {
+    console.error('Error testing voice:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Add translation
 app.post('/api/add-translation', async (req, res) => {
   try {
