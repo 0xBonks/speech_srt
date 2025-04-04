@@ -48,21 +48,21 @@ import { useVoiceoverStore } from '../stores/voiceoverStore';
 
 const store = useVoiceoverStore();
 
-// Funktion zum Testen einer Stimme
+// Function to test a voice
 const testVoice = async (lang) => {
   try {
-    // Prüfe, ob Text eingegeben wurde
+    // Check if text has been entered
     if (!store.scriptText.trim()) {
-      alert('Bitte gib zuerst einen Text in der Text-Input-Ansicht ein.');
+      alert('Please enter a text in the Text Input view first.');
       return;
     }
 
     const voice = store.selectedVoices[lang];
     
-    // Verwende den Text aus der Textarea, falls vorhanden, ansonsten den Standard-Testtext
+    // Use the text from the textarea if available, otherwise use the standard test text
     let testText = store.scriptText.trim();
     
-    // Wenn der Text Übersetzungen enthält, extrahiere den Text für die entsprechende Sprache
+    // If the text contains translations, extract the text for the corresponding language
     if (testText.includes('---')) {
       const parts = testText.split('---');
       if (parts.length >= 2) {
@@ -78,7 +78,7 @@ const testVoice = async (lang) => {
       }
     }
     
-    // Wenn kein spezifischer Text für die Sprache gefunden wurde, verwende den Standard-Testtext
+    // If no specific text for the language was found, use the standard test text
     if (!testText || testText === store.scriptText.trim()) {
       testText = getTestText(lang);
     }
@@ -105,12 +105,12 @@ const testVoice = async (lang) => {
     const audio = new Audio(`${store.apiBaseUrl}/api/play/${data.file_name_mp3}`);
     audio.play();
   } catch (error) {
-    console.error('Fehler beim Testen der Stimme:', error);
-    alert(`Fehler beim Testen der Stimme: ${error.message}`);
+    console.error('Error testing the voice:', error);
+    alert(`Error testing the voice: ${error.message}`);
   }
 };
 
-// Hilfsfunktion, um einen Testtext für jede Sprache zu erhalten
+// Helper function to get a test text for each language
 const getTestText = (lang) => {
   const testTexts = {
     'DE': 'Dies ist ein Test der deutschen Stimme.',

@@ -48,21 +48,21 @@ import { useRouter } from 'vue-router';
 const store = useVoiceoverStore();
 const router = useRouter();
 
-// Prüfen, ob genügend Daten für die Generierung vorhanden sind
+// Check if enough data is available for generation
 const canGenerate = computed(() => {
   return store.scriptText.trim() !== '' && 
          store.activeLanguages.length > 0 && 
          Object.keys(store.selectedVoices).length > 0;
 });
 
-// Funktion zum erneuten Herunterladen der Dateien
+// Function to download the files again
 const downloadFiles = () => {
   if (store.downloadLink) {
     store.triggerAutomaticDownload(store.downloadLink);
   }
 };
 
-// Funktion zum Zurücksetzen des gesamten Prozesses
+// Function to reset the entire process
 const resetProcess = () => {
   store.clearForm();
   router.push('/text-input');

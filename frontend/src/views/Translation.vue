@@ -5,7 +5,7 @@
     <div class="language-selectors">
       <div class="language-selector">
         <label for="originalLanguage">Original Language:</label>
-        <select v-model="store.originalLanguage" id="originalLanguage">
+        <select v-model="store.originalLanguage" id="originalLanguage" @change="handleOriginalLanguageChange">
           <option v-for="(name, code) in store.languages" :key="code" :value="code">
             {{ name }}
           </option>
@@ -29,7 +29,7 @@
       </ifx-button>
     </div>
     
-    <div class="active-languages" v-if="store.activeLanguages.length > 1">
+    <div class="active-languages" v-if="store.activeLanguages.length > 0">
       <h3>Active Languages:</h3>
       <div class="language-tags">
         <span class="language-tag" v-for="lang in store.activeLanguages" :key="lang">
@@ -50,12 +50,19 @@ import { onMounted } from 'vue';
 
 const store = useVoiceoverStore();
 
-// Setze Englisch als Standardsprache beim Laden der Komponente
+// Handler for changes to the original language
+const handleOriginalLanguageChange = () => {
+  console.log('Original language manually changed to:', store.originalLanguage);
+  store.updateOnLanguageChange();
+};
+
+// Ensure that the active languages include the original language
 onMounted(() => {
-  if (store.originalLanguage !== 'EN') {
-    store.originalLanguage = 'EN';
+  if (!store.activeLanguages.includes(store.originalLanguage)) {
     store.updateOnLanguageChange();
   }
+  console.log('Translation component loaded. Active languages:', store.activeLanguages);
+  console.log('Original language:', store.originalLanguage);
 });
 </script>
 

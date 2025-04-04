@@ -2,15 +2,15 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 export const useVoiceoverStore = defineStore('voiceover', () => {
-  // API-Basis-URL
+  // API Base URL
   const apiBaseUrl = ref(import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:5001')
   
-  // Sprachen und Stimmen
-  const originalLanguage = ref('EN')
+  // Languages and Voices
+  const originalLanguage = ref('EN') // Back to English as default
   const targetLanguage = ref('')
   const scriptText = ref('')
-  const activeLanguages = ref(['EN'])
-  const selectedVoices = ref({ 'EN': 'Joanna' })
+  const activeLanguages = ref(['EN']) // Back to English as active language
+  const selectedVoices = ref({ 'EN': 'Joanna' }) // Back to English default voice
   
   // Status
   const isLoading = ref(false)
@@ -25,27 +25,27 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
     'audio-output': { complete: false, error: false }
   })
   
-  // Sprachdaten
+  // Language Data
   const languages = ref({
-    'DE': 'Deutsch',
-    'EN': 'Englisch',
-    'FR': 'Französisch',
-    'ES': 'Spanisch',
-    'IT': 'Italienisch',
-    'PL': 'Polnisch',
-    'PT': 'Portugiesisch',
-    'RU': 'Russisch',
-    'JA': 'Japanisch',
-    'ZH': 'Chinesisch',
-    'AR': 'Arabisch',
-    'NL': 'Niederländisch',
-    'CS': 'Tschechisch',
-    'DA': 'Dänisch',
-    'FI': 'Finnisch',
-    'KO': 'Koreanisch',
-    'NB': 'Norwegisch',
-    'SV': 'Schwedisch',
-    'TR': 'Türkisch'
+    'EN': 'English',
+    'DE': 'German',
+    'FR': 'French',
+    'ES': 'Spanish',
+    'IT': 'Italian',
+    'PL': 'Polish',
+    'PT': 'Portuguese',
+    'RU': 'Russian',
+    'JA': 'Japanese',
+    'ZH': 'Chinese',
+    'AR': 'Arabic',
+    'NL': 'Dutch',
+    'CS': 'Czech',
+    'DA': 'Danish',
+    'FI': 'Finnish',
+    'KO': 'Korean',
+    'NB': 'Norwegian',
+    'SV': 'Swedish',
+    'TR': 'Turkish'
   })
   
   const voices = ref({
@@ -72,7 +72,7 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
   
   // Computed Properties
   const availableTargetLanguages = computed(() => {
-    // Filtere nur die Originalsprache heraus, nicht alle aktiven Sprachen
+    // Filter out only the original language, not all active languages
     return Object.entries(languages.value)
       .filter(([code]) => code !== originalLanguage.value)
       .reduce((acc, [code, lang]) => {
@@ -81,12 +81,12 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
       }, {});
   })
   
-  // Prüfen, ob Text eingegeben wurde
+  // Check if text has been entered
   const hasText = computed(() => {
     return scriptText.value.trim().length > 0;
   })
   
-  // Methoden zum Verwalten des Stepper-Status
+  // Methods for managing stepper status
   function setStepComplete(stepName) {
     if (stepStatus.value[stepName]) {
       stepStatus.value[stepName].complete = true;
@@ -108,7 +108,7 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
     }
   }
   
-  // Validierung der Schritte
+  // Validation of steps
   function validateTextInput() {
     if (!hasText.value) {
       setStepError('text-input');
@@ -130,10 +130,10 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
       return false;
     }
     
-    // Text ist vorhanden, markiere den Schritt als abgeschlossen
+    // Text is available, mark the step as completed
     setStepComplete('text-input');
     
-    // Wenn keine Zielsprache ausgewählt ist, wähle die erste verfügbare Sprache
+    // If no target language is selected, choose the first available language
     if (!targetLanguage.value && Object.keys(availableTargetLanguages.value).length > 0) {
       targetLanguage.value = Object.keys(availableTargetLanguages.value)[0];
     }
@@ -174,7 +174,7 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
     return textarea ? textarea.selectionStart : 0;
   }
   
-  // Funktion zum Setzen der Cursorposition
+  // Function to set cursor position
   const cursorPosition = ref(0);
   function setCursorPosition(position) {
     // Speichere die Cursorposition in einer Variable
@@ -429,16 +429,26 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
       }
       
       isLoading.value = true;
-      const voicesToUse = { ...selectedVoices.value };
+      const voicesToUse = {};
       
       // Stelle sicher, dass jede aktive Sprache eine Stimme hat
       for (const lang of activeLanguages.value) {
-        if (!voicesToUse[lang] && voices.value[lang] && voices.value[lang].length > 0) {
-          voicesToUse[lang] = voices.value[lang][0];
+        if (voices.value[lang] && voices.value[lang].length > 0) {
+          // Use the already selected voice or the first available one
+          voicesToUse[lang] = selectedVoices.value[lang] || voices.value[lang][0];
         }
       }
       
-      console.log('Generiere Dateien mit Stimmen:', voicesToUse);
+      console.log('Generating voiceover with voices:', voicesToUse);
+      console.log('Active languages:', activeLanguages.value);
+      
+      // Check if at least one voice is selected
+      if (Object.keys(voicesToUse).length === 0) {
+        errorMessage.value = 'Please select at least one voice.';
+        alert(errorMessage.value);
+        isLoading.value = false;
+        return;
+      }
       
       const response = await fetch(`${apiBaseUrl.value}/api/make-files`, {
         method: 'POST',
@@ -451,13 +461,17 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`HTTP-Fehler: ${response.status} - ${errorData.error || 'Unbekannter Fehler'}`);
+        throw new Error(`HTTP Error: ${response.status}`);
       }
       
-      const { workerId } = await response.json();
-      console.log('Worker ID:', workerId);
+      const data = await response.json();
+      const workerId = data.workerId;
       
+      if (!workerId) {
+        throw new Error('No worker ID received');
+      }
+      
+      // Polling for worker status
       const checkProgress = async () => {
         try {
           const progressUrl = `${apiBaseUrl.value}/api/worker/${workerId}`;
@@ -465,7 +479,7 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
           
           const progressResponse = await fetch(progressUrl);
           if (!progressResponse.ok) {
-            throw new Error(`HTTP-Fehler bei Worker-Status: ${progressResponse.status}`);
+            throw new Error(`HTTP error in worker status: ${progressResponse.status}`);
           }
           
           const workerStatus = await progressResponse.json();
@@ -473,15 +487,15 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
           
           if (workerStatus.status === 'completed') {
             if (workerStatus.result && workerStatus.result.error) {
-              errorMessage.value = `Fehler: ${workerStatus.result.error}`;
+              errorMessage.value = `Error during generation: ${workerStatus.result.error}`;
               console.error(errorMessage.value);
               alert(errorMessage.value);
             } else if (workerStatus.result && workerStatus.result.download_file_name) {
               const downloadUrl = `${apiBaseUrl.value}/api/download/${workerStatus.result.download_file_name}`;
               downloadLink.value = downloadUrl;
-              console.log('Download-Link:', downloadLink.value);
+              console.log('Download link:', downloadLink.value);
               
-              // Automatischer Download
+              // Automatic download
               triggerAutomaticDownload(downloadUrl);
             }
             isLoading.value = false;
@@ -498,7 +512,7 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
       
       await checkProgress();
     } catch (error) {
-      errorMessage.value = `Fehler beim Generieren der Dateien: ${error.message}`;
+      errorMessage.value = `Error generating files: ${error.message}`;
       console.error(errorMessage.value, error);
       alert(errorMessage.value);
       isLoading.value = false;
@@ -507,33 +521,33 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
   
   function triggerAutomaticDownload(url) {
     try {
-      console.log('Starte automatischen Download von:', url);
+      console.log('Starting automatic download from:', url);
       
-      // Erstelle ein unsichtbares a-Element zum Starten des Downloads
+      // Create an invisible a-element to start the download
       const downloadElement = document.createElement('a');
       downloadElement.href = url;
-      downloadElement.download = 'voiceover_files.zip'; // Vorgeschlagener Dateiname
-      downloadElement.target = '_blank'; // Öffne in neuem Tab, falls inline-Download nicht funktioniert
+      downloadElement.download = 'voiceover_files.zip'; // Suggested filename
+      downloadElement.target = '_blank'; // Open in new tab if inline download doesn't work
       downloadElement.rel = 'noopener noreferrer';
       downloadElement.style.display = 'none';
       
-      // Füge das Element zum DOM hinzu
+      // Add the element to the DOM
       document.body.appendChild(downloadElement);
       
-      // Starte den Download
+      // Start the download
       downloadElement.click();
       
-      // Entferne das Element nach dem Klick
+      // Remove the element after the click
       setTimeout(() => {
         document.body.removeChild(downloadElement);
       }, 1000);
       
-      console.log('Automatischer Download gestartet');
+      console.log('Automatic download started');
     } catch (error) {
-      errorMessage.value = `Fehler beim automatischen Download: ${error.message}`;
+      errorMessage.value = `Error during automatic download: ${error.message}`;
       console.error(errorMessage.value, error);
-      // Falls der automatische Download fehlschlägt, zeige eine Nachricht an
-      alert('Automatischer Download konnte nicht gestartet werden. Bitte nutzen Sie den Download-Link.');
+      // If automatic download fails, show a message
+      alert('Automatic download could not be started. Please use the download link.');
     }
   }
   
@@ -544,31 +558,30 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
     downloadLink.value = null;
     errorMessage.value = '';
     
-    // Setze alle Stepper-Schritte zurück
+    // Reset all stepper steps
     for (const step in stepStatus.value) {
       stepStatus.value[step].complete = false;
       stepStatus.value[step].error = false;
     }
     
-    console.log('Formular und Stepper-Status zurückgesetzt');
+    console.log('Form and stepper status reset');
   }
   
   // Watches
   function updateOnLanguageChange() {
-    // Stelle sicher, dass die Originalsprache in den aktiven Sprachen enthalten ist,
-    // aber behalte alle anderen aktiven Sprachen bei
-    if (!activeLanguages.value.includes(originalLanguage.value)) {
-      activeLanguages.value = [originalLanguage.value, ...activeLanguages.value];
-    }
+    // Ensure that the original language is included in the active languages
+    // and remove all other languages, since when changing the original language
+    // we only want to keep the new original language
+    activeLanguages.value = [originalLanguage.value];
     
-    // Stelle sicher, dass für die Originalsprache eine Stimme ausgewählt ist
+    // Ensure that a voice is selected for the original language
     if (!selectedVoices.value[originalLanguage.value] && voices.value[originalLanguage.value] && voices.value[originalLanguage.value].length > 0) {
-      selectedVoices.value[originalLanguage.value] = voices.value[originalLanguage.value][0];
+      selectedVoices.value = { [originalLanguage.value]: voices.value[originalLanguage.value][0] };
     }
     
-    // Behalte den Text bei - lösche ihn nicht
-    // downloadLink.value = null;
-    // errorMessage.value = '';
+    console.log('Original language changed to:', originalLanguage.value);
+    console.log('Active languages updated:', activeLanguages.value);
+    console.log('Selected voices updated:', selectedVoices.value);
   }
   
   return {
@@ -603,7 +616,7 @@ export const useVoiceoverStore = defineStore('voiceover', () => {
     updateOnLanguageChange,
     submitTextAndProceed,
     
-    // Stepper-Status-Methoden
+    // Stepper status methods
     setStepComplete,
     setStepError,
     resetStepStatus,
