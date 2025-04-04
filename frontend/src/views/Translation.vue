@@ -1,6 +1,6 @@
 <template>
   <div class="translation-container">
-    <h2>Translation</h2>
+    <h2 class="section-title">Translation</h2>
     
     <div class="language-selectors">
       <div class="language-selector">
@@ -76,8 +76,14 @@ onMounted(() => {
   width: 100%;
 }
 
-h2, h3 {
+h3 {
   margin-bottom: 20px;
+}
+
+.section-title {
+  margin-bottom: 20px;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .language-selectors {

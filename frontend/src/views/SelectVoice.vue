@@ -1,6 +1,6 @@
 <template>
   <div class="select-voice-container">
-    <h2>Select Voice</h2>
+    <h2 class="section-title">Select Voice</h2>
     
     <div v-if="store.activeLanguages.length > 0" class="voice-selection">
       <div class="voice-table">
@@ -148,8 +148,10 @@ const getTestText = (lang) => {
   width: 100%;
 }
 
-h2 {
+.section-title {
   margin-bottom: 20px;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .voice-selection {

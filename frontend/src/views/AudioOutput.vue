@@ -1,6 +1,6 @@
 <template>
   <div class="audio-output-container">
-    <h2>Audio Output</h2>
+    <h2 class="section-title">Audio Output</h2>
     
     <div v-if="store.isLoading" class="loading">
       <p>Generating audio files... Please wait.</p>
@@ -80,8 +80,10 @@ const resetProcess = () => {
   height: 100%;
 }
 
-h2 {
+.section-title {
   margin-bottom: 20px;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .loading, .download-section, .generate-section {

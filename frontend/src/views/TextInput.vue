@@ -1,8 +1,8 @@
 <template>
   <div class="text-input-container">
-    <h2>Text Input:</h2>
+    <h2 class="section-title">Text Input:</h2>
     <div class="text-area-container">
-      <textarea v-model="store.scriptText" rows="16" id="inputText"></textarea>
+      <textarea v-model="store.scriptText" :rows="calculateRows()" id="inputText"></textarea>
     </div>
     <div class="button-container actions">
       <!--
@@ -16,9 +16,61 @@
 
 <script setup>
 import { useVoiceoverStore } from '../stores/voiceoverStore';
-import { watch } from 'vue';
+import { watch, ref, onMounted, onUnmounted } from 'vue';
 
 const store = useVoiceoverStore();
+const windowHeight = ref(window.innerHeight);
+
+// Function to calculate appropriate number of rows based on window height
+function calculateRows() {
+  // Base calculation on window height
+  // For smaller screens (e.g., laptops), use fewer rows
+  // For larger screens (e.g., desktops), use more rows
+  const baseRows = 16;
+  
+  if (windowHeight.value < 700) {
+    return 14; // Smaller screens
+  } else if (windowHeight.value > 1200) {
+    return 28; // Larger screens
+  } else {
+    // Linear interpolation between 15 and 29 rows
+    return Math.floor(14 + ((windowHeight.value - 700) / 500) * 14);
+  }
+}
+
+// Update window height on resize
+function handleResize() {
+  windowHeight.value = window.innerHeight;
+}
+
+// Check if textarea content overflows and add/remove overflow class accordingly
+function checkOverflow() {
+  const textarea = document.getElementById('inputText');
+  if (textarea) {
+    if (textarea.scrollHeight > textarea.clientHeight) {
+      textarea.classList.add('overflow');
+    } else {
+      textarea.classList.remove('overflow');
+    }
+  }
+}
+
+// Add and remove event listeners
+onMounted(() => {
+  window.addEventListener('resize', handleResize);
+  
+  // Check for overflow initially and whenever text changes
+  setTimeout(checkOverflow, 100); // Initial check after render
+  
+  // Watch for text changes to check overflow
+  watch(() => store.scriptText, () => {
+    setTimeout(checkOverflow, 10);
+  });
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+});
 
 // Function for simple language detection
 function detectLanguage(text) {
@@ -82,15 +134,14 @@ h2 {
 
 .text-area-container {
   width: 100%;
-  max-width: 800px;
+  max-width: 100%;
   margin-bottom: 20px;
-  padding: 0 15px;
+  padding: 0;
   box-sizing: border-box;
 }
 
 textarea {
   width: 100%;
-  height: 200px;
   padding: 10px;
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -101,6 +152,34 @@ textarea {
   word-wrap: break-word;
   overflow-wrap: break-word;
   white-space: pre-wrap;
+  /* Only show scrollbar when needed */
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+
+/* Only show scrollbar when content overflows */
+textarea::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
+textarea.overflow {
+  scrollbar-width: thin; /* Firefox */
+}
+
+textarea.overflow::-webkit-scrollbar {
+  display: block; /* Chrome, Safari, Edge */
+  width: 8px;
+}
+
+textarea.overflow::-webkit-scrollbar-thumb {
+  background-color: #c1c1c1;
+  border-radius: 4px;
+}
+
+.section-title {
+  margin-bottom: 20px;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .button-container {
